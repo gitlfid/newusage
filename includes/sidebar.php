@@ -20,7 +20,7 @@ function getIconClass($page_name, $current_page, $icon_name) {
                 <i class="ph ph-lightning text-2xl"></i>
             </div>
             <span class="text-xl font-bold text-slate-800 dark:text-white opacity-100 duration-300 group-[.is-collapsed]:opacity-0">
-                New Usage Monitor
+                New2 Usage Monitor
             </span>
         </a>
         <button id="sidebar-toggle" class="block lg:hidden text-slate-500 hover:text-indigo-600">
