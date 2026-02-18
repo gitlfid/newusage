@@ -11,15 +11,12 @@ require 'vendor/autoload.php';
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-// --- HELPER: HIERARCHY BUILDER ---
+// --- HELPER: HIERARCHY BUILDER (Optimized) ---
 function buildUserCompanyTree(array $elements, $parentId = 0) {
     $branch = array();
     foreach ($elements as $element) {
         $pid = $element['parent_id'] ?? 0;
-        // Jika parent ID element ini sama dengan parentId yang dicari
-        // ATAU jika ini adalah root node (parentId=0) tapi parent sebenarnya tidak ada di list (orphaned visual root)
-        $is_root_visual = ($parentId == 0 && !isset($elements[$pid]));
-        
+        // Logic: Add if parent matches OR if it's a root node for this specific user's view context
         if ($pid == $parentId || ($parentId == 0 && !isset($elements[$pid]))) {
             $children = buildUserCompanyTree($elements, $element['id']);
             if ($children) {
@@ -45,76 +42,49 @@ function flatUserCompanyTree($tree, $depth = 0) {
     return $result;
 }
 
-// --- 1. TENTUKAN AKSES PERUSAHAAN USER SAAT INI ---
+// --- 1. GET COMPANIES (With Hierarchy Support) ---
 $raw_companies = [];
 $my_min_level = 99; 
 
+// SQL to fetch companies based on permission
 if ($is_admin) {
-    // Admin ambil semua company (tambah parent_id)
-    $q = $conn->query("SELECT id, company_name, level, parent_id FROM companies ORDER BY company_name");
-    while($r = $q->fetch_assoc()) {
-        $raw_companies[$r['id']] = $r;
-    }
-    $my_min_level = 1; 
+    $q = "SELECT id, company_name, level, parent_id FROM companies ORDER BY company_name ASC";
 } else {
-    // User biasa
+    // Check Global
     $uCheck = $conn->query("SELECT is_global FROM users WHERE id = $current_user_id")->fetch_assoc();
-    
     if ($uCheck && $uCheck['is_global']) {
-        $q = $conn->query("SELECT id, company_name, level, parent_id FROM companies ORDER BY company_name");
-        while($r = $q->fetch_assoc()) $raw_companies[$r['id']] = $r;
-        $my_min_level = 1; 
+        $q = "SELECT id, company_name, level, parent_id FROM companies ORDER BY company_name ASC";
     } else {
-        $q = $conn->query("
-            SELECT c.id, c.company_name, c.level, c.parent_id 
-            FROM companies c 
-            JOIN user_company_access uca ON c.id = uca.company_id 
-            WHERE uca.user_id = $current_user_id
-            ORDER BY c.company_name
-        ");
-        while($r = $q->fetch_assoc()) {
-            $raw_companies[$r['id']] = $r;
-            if ($r['level'] < $my_min_level) $my_min_level = $r['level'];
-        }
+        $q = "SELECT c.id, c.company_name, c.level, c.parent_id 
+              FROM companies c 
+              JOIN user_company_access uca ON c.id = uca.company_id 
+              WHERE uca.user_id = $current_user_id
+              ORDER BY c.company_name ASC";
     }
 }
 
-// Build Hierarchy untuk Dropdown
-// Kita perlu array index by ID untuk buildTree
-$companies_indexed = [];
-foreach($raw_companies as $c) {
-    $companies_indexed[$c['id']] = $c;
+$res = $conn->query($q);
+if($res) {
+    while($r = $res->fetch_assoc()) {
+        $raw_companies[$r['id']] = $r;
+        if ($r['level'] < $my_min_level) $my_min_level = $r['level'];
+    }
 }
 
-// Proses Tree
-// Note: buildTree logic dimodifikasi sedikit di atas agar menangani item yang parent-nya tidak ada di list (jadi root visual)
+// Build Hierarchy Tree for Dropdown/List
+$companies_indexed = $raw_companies; // Already indexed by ID
 $tree = [];
+// Safe tree building: prevent infinite recursion if parent_id is missing from dataset
 foreach ($companies_indexed as $id => $node) {
-    // Cari root nodes (yang parent_id nya 0, ATAU parent_id nya tidak ada di daftar akses user ini)
     $pid = $node['parent_id'];
+    // If parent is 0 OR parent is not in our loaded dataset, treat as root for this view
     if (empty($pid) || !isset($companies_indexed[$pid])) {
-        // Ini adalah root visual untuk user ini
-        // Kita panggil fungsi rekursif manual untuk node ini
-        $node['children'] = buildTreeFromSubset($companies_indexed, $id);
+        // Find children from the full dataset
+        $node['children'] = buildUserCompanyTree($companies_indexed, $id);
         $tree[] = $node;
     }
 }
-
-// Helper khusus untuk subset
-function buildTreeFromSubset($dataset, $parentId) {
-    $branch = [];
-    foreach ($dataset as $id => $node) {
-        if ($node['parent_id'] == $parentId) {
-            $children = buildTreeFromSubset($dataset, $id);
-            if ($children) $node['children'] = $children;
-            $branch[] = $node;
-        }
-    }
-    return $branch;
-}
-
 $my_companies_sorted = flatUserCompanyTree($tree);
-
 
 // Helper: Password Generator
 function generateRandomPassword($length = 10) {
@@ -192,7 +162,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $selected_companies = $_POST['company_ids'] ?? [];
         $is_global = isset($_POST['is_global']) ? 1 : 0;
 
-        // Security
+        // Security Validation
         if (!$is_admin && $target_role != 'user') {
             $msg = "Access Denied: You can only create Standard Users."; $msg_type = "error";
         } 
@@ -216,7 +186,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         $new_uid = $conn->insert_id;
                         if (!empty($selected_companies)) {
                             $vals = []; foreach($selected_companies as $cid) $vals[] = "($new_uid, ".intval($cid).")";
-                            $conn->query("INSERT INTO user_company_access (user_id, company_id) VALUES " . implode(',', $vals));
+                            if(!empty($vals)) {
+                                $conn->query("INSERT INTO user_company_access (user_id, company_id) VALUES " . implode(',', $vals));
+                            }
                         }
                         
                         // Email
@@ -233,8 +205,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 // UPDATE
                 $can_update = $is_admin;
                 if (!$is_admin) {
+                    // Self update or sub-user update logic
                     if ($id == $current_user_id) $can_update = true; 
-                    else $can_update = true; // Simplified for now
+                    else $can_update = true; // Simplified for now to allow editing sub-users
                 }
 
                 if ($can_update) {
@@ -246,7 +219,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         $conn->query("DELETE FROM user_company_access WHERE user_id=$id");
                         if (!empty($selected_companies)) {
                             $vals = []; foreach($selected_companies as $cid) $vals[] = "($id, ".intval($cid).")";
-                            $conn->query("INSERT INTO user_company_access (user_id, company_id) VALUES " . implode(',', $vals));
+                            if(!empty($vals)) {
+                                $conn->query("INSERT INTO user_company_access (user_id, company_id) VALUES " . implode(',', $vals));
+                            }
                         }
                         $msg = "User updated."; $msg_type = "success";
                     }
@@ -258,11 +233,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     // 2. DELETE USER
     if (isset($_POST['delete_user'])) {
         $id = $_POST['delete_id'];
-        if ($id == $current_user_id) { $msg = "Cannot delete yourself."; $msg_type = "error"; }
-        else {
+        if ($id == $current_user_id) { 
+            $msg = "Cannot delete yourself."; $msg_type = "error"; 
+        } else {
+            // Delete Access
             $conn->query("DELETE FROM user_company_access WHERE user_id=$id");
-            $conn->query("DELETE FROM users WHERE id=$id");
-            $msg = "User deleted."; $msg_type = "success";
+            // Delete User
+            $del = $conn->query("DELETE FROM users WHERE id=$id");
+            if($del) {
+                $msg = "User deleted."; $msg_type = "success";
+            } else {
+                $msg = "Delete failed: " . $conn->error; $msg_type = "error";
+            }
         }
     }
 
@@ -272,12 +254,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $email = $_POST['reset_email'];
         $new_pass = generateRandomPassword();
         $hashed = password_hash($new_pass, PASSWORD_DEFAULT);
-        $conn->query("UPDATE users SET password='$hashed' WHERE id=$id");
+        $upd = $conn->query("UPDATE users SET password='$hashed' WHERE id=$id");
         
-        $blocks = "<div class='row'><span class='label'>New Password</span><div class='val'>$new_pass</div></div>";
-        $body = getModernEmailBody("Password Reset", "Your password has been reset.", $blocks, "Login Now");
-        sendSystemEmail($email, "Password Reset Notification", $body);
-        $msg = "Password reset & email sent."; $msg_type = "success";
+        if($upd) {
+            $blocks = "<div class='row'><span class='label'>New Password</span><div class='val'>$new_pass</div></div>";
+            $body = getModernEmailBody("Password Reset", "Your password has been reset.", $blocks, "Login Now");
+            sendSystemEmail($email, "Password Reset Notification", $body);
+            $msg = "Password reset & email sent."; $msg_type = "success";
+        } else {
+            $msg = "Reset failed: " . $conn->error; $msg_type = "error";
+        }
     }
 }
 
@@ -292,11 +278,14 @@ $where = [];
 if (!$is_admin) {
     $my_comp_ids_str = implode(',', array_keys($raw_companies));
     if (empty($my_comp_ids_str)) {
+        // If user has no companies assigned, can only see self
         $where[] = "u.id = $current_user_id";
     } else {
+        // See self OR users who have access to user's companies
         $where[] = "(u.id = $current_user_id OR u.id IN (
             SELECT DISTINCT user_id FROM user_company_access WHERE company_id IN ($my_comp_ids_str)
         ))";
+        // Hide admins from regular users
         $where[] = "u.role NOT IN ('superadmin', 'admin')";
     }
 }
@@ -408,7 +397,8 @@ $total_users = $users->num_rows;
                                         default => 'bg-slate-50 text-slate-600 border-slate-100'
                                     };
                                     
-                                    $editData = json_encode([
+                                    // Use single quotes for HTML attributes to avoid conflict with JSON double quotes
+                                    $editData = htmlspecialchars(json_encode([
                                         'id' => $u['id'],
                                         'username' => $u['username'],
                                         'email' => $u['email'],
@@ -416,7 +406,7 @@ $total_users = $users->num_rows;
                                         'role' => $u['role'],
                                         'is_global' => $u['is_global'],
                                         'assigned_ids' => $u['assigned_ids']
-                                    ]);
+                                    ]), ENT_QUOTES, 'UTF-8');
                                 ?>
                                 <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors user-row group">
                                     <td class="px-6 py-4">
@@ -454,10 +444,12 @@ $total_users = $users->num_rows;
                                     <td class="px-6 py-4 font-mono text-xs text-slate-500"><?= $u['phone'] ?: '-' ?></td>
                                     <td class="px-6 py-4 text-center">
                                         <div class="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onclick='editUser(<?= $editData ?>)' class="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all"><i class="ph ph-pencil-simple text-lg"></i></button>
-                                            <button onclick="confirmReset(<?= $u['id'] ?>, '<?= $u['email'] ?>')" class="p-2 rounded-lg text-slate-400 hover:text-amber-500 hover:bg-amber-50 transition-all"><i class="ph ph-key text-lg"></i></button>
+                                            <button type="button" onclick="editUser(<?= $editData ?>)" class="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all"><i class="ph ph-pencil-simple text-lg"></i></button>
+                                            
+                                            <button type="button" onclick="confirmReset('<?= $u['id'] ?>', '<?= addslashes($u['email']) ?>')" class="p-2 rounded-lg text-slate-400 hover:text-amber-500 hover:bg-amber-50 transition-all"><i class="ph ph-key text-lg"></i></button>
+                                            
                                             <?php if($u['id'] != $current_user_id): ?>
-                                            <button onclick="confirmDelete(<?= $u['id'] ?>, '<?= $u['username'] ?>')" class="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"><i class="ph ph-trash text-lg"></i></button>
+                                            <button type="button" onclick="confirmDelete('<?= $u['id'] ?>', '<?= addslashes($u['username']) ?>')" class="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"><i class="ph ph-trash text-lg"></i></button>
                                             <?php endif; ?>
                                         </div>
                                     </td>
@@ -687,9 +679,22 @@ $total_users = $users->num_rows;
         }
 
         function closeModal(id) { animateModal(id, false); }
-        function confirmDelete(id, name) { document.getElementById('deleteId').value = id; document.getElementById('delUserName').innerText = name; animateModal('deleteModal', true); }
-        function confirmReset(id, email) { document.getElementById('resetId').value = id; document.getElementById('resetEmail').value = email; document.getElementById('resetEmailText').innerText = email; animateModal('resetModal', true); }
+
+        function confirmDelete(id, name) { 
+            document.getElementById('deleteId').value = id; 
+            document.getElementById('delUserName').innerText = name; 
+            animateModal('deleteModal', true); 
+        }
+
+        function confirmReset(id, email) { 
+            document.getElementById('resetId').value = id; 
+            document.getElementById('resetEmail').value = email; 
+            document.getElementById('resetEmailText').innerText = email; 
+            animateModal('resetModal', true); 
+        }
+
         function showProcessing(form) { form.querySelector('button[type="submit"]').innerHTML = '<i class="ph ph-spinner animate-spin"></i> Processing...'; }
+        
         function hideToast() { document.getElementById('toast').classList.add('translate-x-full', 'opacity-0'); }
         
         <?php if($msg): ?>
