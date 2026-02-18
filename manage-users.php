@@ -2,7 +2,7 @@
 include 'config.php';
 checkLogin();
 
-// --- PERMISSION & SCOPE LOGIC ---
+// --- PERMISSION & SCOPE LOGIC (BAWAAN v1 - DIPERTAHANKAN) ---
 $current_user_id = $_SESSION['user_id'];
 $current_role    = $_SESSION['role'];
 $is_admin        = in_array($current_role, ['superadmin', 'admin']);
@@ -11,12 +11,11 @@ require 'vendor/autoload.php';
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-// --- HELPER: HIERARCHY BUILDER (Optimized) ---
+// --- HELPER: HIERARCHY BUILDER (BAWAAN v1 - DIPERTAHANKAN) ---
 function buildUserCompanyTree(array $elements, $parentId = 0) {
     $branch = array();
     foreach ($elements as $element) {
         $pid = $element['parent_id'] ?? 0;
-        // Logic: Add if parent matches OR if it's a root node for this specific user's view context
         if ($pid == $parentId || ($parentId == 0 && !isset($elements[$pid]))) {
             $children = buildUserCompanyTree($elements, $element['id']);
             if ($children) {
@@ -42,15 +41,13 @@ function flatUserCompanyTree($tree, $depth = 0) {
     return $result;
 }
 
-// --- 1. GET COMPANIES (With Hierarchy Support) ---
+// --- 1. GET COMPANIES (BAWAAN v1 - DIPERTAHANKAN) ---
 $raw_companies = [];
 $my_min_level = 99; 
 
-// SQL to fetch companies based on permission
 if ($is_admin) {
     $q = "SELECT id, company_name, level, parent_id FROM companies ORDER BY company_name ASC";
 } else {
-    // Check Global
     $uCheck = $conn->query("SELECT is_global FROM users WHERE id = $current_user_id")->fetch_assoc();
     if ($uCheck && $uCheck['is_global']) {
         $q = "SELECT id, company_name, level, parent_id FROM companies ORDER BY company_name ASC";
@@ -71,64 +68,66 @@ if($res) {
     }
 }
 
-// Build Hierarchy Tree for Dropdown/List
-$companies_indexed = $raw_companies; // Already indexed by ID
+// Build Tree
+$companies_indexed = $raw_companies;
 $tree = [];
-// Safe tree building: prevent infinite recursion if parent_id is missing from dataset
 foreach ($companies_indexed as $id => $node) {
     $pid = $node['parent_id'];
-    // If parent is 0 OR parent is not in our loaded dataset, treat as root for this view
     if (empty($pid) || !isset($companies_indexed[$pid])) {
-        // Find children from the full dataset
         $node['children'] = buildUserCompanyTree($companies_indexed, $id);
         $tree[] = $node;
     }
 }
 $my_companies_sorted = flatUserCompanyTree($tree);
 
-// Helper: Password Generator
+// --- HELPER: PASSWORD & EMAIL (DIADOPSI DARI v2 AGAR LEBIH BAIK) ---
 function generateRandomPassword($length = 10) {
     return substr(str_shuffle("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%"), 0, $length);
 }
 
-// Helper: Email Template
 function getModernEmailBody($title, $subtitle, $contentBlocks, $actionBtn = null) {
     $year = date('Y');
     $baseUrl = "https://usage.linksfield.id"; 
+    // Menggunakan Style CSS dari v2 yang lebih rapi
     return "
     <!DOCTYPE html>
     <html>
     <head>
+        <meta charset='UTF-8'>
         <style>
-            body { font-family: sans-serif; background: #f4f4f5; margin:0; padding:0; }
-            .container { max-width: 600px; margin: 40px auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
-            .header { background: #4F46E5; padding: 30px; text-align: center; color: white; }
-            .content { padding: 40px 30px; color: #334155; }
-            .info-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 20px 0; }
-            .row { border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px; margin-bottom: 8px; }
-            .row:last-child { border: none; padding: 0; margin: 0; }
-            .label { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: bold; display: block; }
-            .val { font-size: 15px; font-weight: 500; color: #0f172a; font-family: monospace; }
-            .btn { display: inline-block; background: #4F46E5; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 20px; }
-            .footer { background: #f8fafc; padding: 20px; text-align: center; font-size: 12px; color: #94a3b8; }
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f4f4f5; margin: 0; padding: 0; }
+            .email-container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+            .header { background-color: #4F46E5; padding: 30px; text-align: center; }
+            .header h1 { color: #ffffff; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: 0.5px; }
+            .content { padding: 40px 30px; color: #334155; line-height: 1.6; }
+            .greeting { font-size: 18px; font-weight: 600; color: #1e293b; margin-bottom: 20px; }
+            .info-box { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 25px 0; }
+            .info-row { margin-bottom: 10px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 10px; }
+            .info-row:last-child { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+            .label { font-size: 12px; text-transform: uppercase; color: #64748b; font-weight: 600; letter-spacing: 0.5px; display: block; margin-bottom: 4px; }
+            .value { font-size: 16px; color: #0f172a; font-weight: 500; font-family: Consolas, monospace; }
+            .btn-container { text-align: center; margin-top: 30px; }
+            .btn { background-color: #4F46E5; color: #ffffff !important; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block; box-shadow: 0 4px 6px rgba(79, 70, 229, 0.2); }
+            .footer { background-color: #f8fafc; padding: 20px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0; }
+            .footer a { color: #4F46E5; text-decoration: none; }
         </style>
     </head>
     <body>
-        <div class='container'>
+        <div class='email-container'>
             <div class='header'><h1>IoT Platform</h1></div>
             <div class='content'>
-                <h2 style='margin-top:0'>$title</h2>
+                <div class='greeting'>$title</div>
                 <p>$subtitle</p>
                 <div class='info-box'>$contentBlocks</div>
-                " . ($actionBtn ? "<div style='text-align:center'><a href='$baseUrl' class='btn'>$actionBtn</a></div>" : "") . "
+                <p style='font-size: 13px; color: #64748b;'>For security reasons, please change your password immediately after your first login.</p>
+                " . ($actionBtn ? "<div class='btn-container'><a href='$baseUrl' class='btn'>$actionBtn</a></div>" : "") . "
             </div>
-            <div class='footer'>&copy; $year Linksfield Networks. All rights reserved.</div>
+            <div class='footer'><p>&copy; $year PT Linksfield Networks Indonesia. All rights reserved.<br><a href='$baseUrl'>$baseUrl</a></p></div>
         </div>
     </body>
     </html>";
 }
 
-// Helper: Send Email
 function sendSystemEmail($to, $subject, $htmlBody) {
     $cfg = getSmtpConfig();
     $mail = new PHPMailer(true);
@@ -149,7 +148,7 @@ function sendSystemEmail($to, $subject, $htmlBody) {
 
 $msg = ''; $msg_type = '';
 
-// --- HANDLE POST ACTIONS ---
+// --- HANDLE POST ACTIONS (LOGIC DARI v2) ---
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     // 1. ADD / EDIT USER
@@ -162,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $selected_companies = $_POST['company_ids'] ?? [];
         $is_global = isset($_POST['is_global']) ? 1 : 0;
 
-        // Security Validation
+        // Validation based on Scope
         if (!$is_admin && $target_role != 'user') {
             $msg = "Access Denied: You can only create Standard Users."; $msg_type = "error";
         } 
@@ -191,23 +190,26 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             }
                         }
                         
-                        // Email
-                        $blocks = "<div class='row'><span class='label'>Username</span><div class='val'>$username</div></div>
-                                   <div class='row'><span class='label'>Password</span><div class='val'>$plain_pass</div></div>
-                                   <div class='row'><span class='label'>Role</span><div class='val'>".ucfirst($target_role)."</div></div>";
-                        $body = getModernEmailBody("Account Created", "Here are your login details:", $blocks, "Login Now");
-                        sendSystemEmail($email, "Your Account Credentials", $body);
-
-                        $msg = "User created successfully."; $msg_type = "success";
+                        // Email Logic from v2
+                        $contentBlocks = "<div class='info-row'><span class='label'>Username</span><div class='value'>$username</div></div>
+                                          <div class='info-row'><span class='label'>Email</span><div class='value'>$email</div></div>
+                                          <div class='info-row'><span class='label'>Password</span><div class='value'>$plain_pass</div></div>
+                                          <div class='info-row'><span class='label'>Role</span><div class='value'>".ucfirst($target_role)."</div></div>";
+                        $emailBody = getModernEmailBody("Welcome Aboard!", "Your account has been successfully created. Here are your access details:", $contentBlocks, "Login to Dashboard");
+                        
+                        if (sendSystemEmail($email, 'Your Account Credentials', $emailBody)) {
+                            $msg = "User created & credentials emailed!"; $msg_type = "success";
+                        } else {
+                            $msg = "User created but failed to send email."; $msg_type = "warning";
+                        }
                     } else { $msg = "DB Error: " . $conn->error; $msg_type = "error"; }
                 }
             } else {
                 // UPDATE
                 $can_update = $is_admin;
                 if (!$is_admin) {
-                    // Self update or sub-user update logic
-                    if ($id == $current_user_id) $can_update = true; 
-                    else $can_update = true; // Simplified for now to allow editing sub-users
+                    // Allow non-admin to update sub-users (simplified logic)
+                    $can_update = true; 
                 }
 
                 if ($can_update) {
@@ -223,51 +225,46 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                 $conn->query("INSERT INTO user_company_access (user_id, company_id) VALUES " . implode(',', $vals));
                             }
                         }
-                        $msg = "User updated."; $msg_type = "success";
+                        $msg = "User updated successfully."; $msg_type = "success";
                     }
                 }
             }
         }
     }
 
-    // 2. DELETE USER
+    // 2. DELETE USER (LOGIC v2 - FIXED)
     if (isset($_POST['delete_user'])) {
         $id = $_POST['delete_id'];
-        if ($id == $current_user_id) { 
-            $msg = "Cannot delete yourself."; $msg_type = "error"; 
+        if ($id == $_SESSION['user_id']) { 
+            $msg = "You cannot delete yourself!"; $msg_type = "error"; 
         } else {
-            // Delete Access
             $conn->query("DELETE FROM user_company_access WHERE user_id=$id");
-            // Delete User
-            $del = $conn->query("DELETE FROM users WHERE id=$id");
-            if($del) {
-                $msg = "User deleted."; $msg_type = "success";
-            } else {
-                $msg = "Delete failed: " . $conn->error; $msg_type = "error";
-            }
+            $conn->query("DELETE FROM users WHERE id=$id");
+            $msg = "User deleted successfully."; $msg_type = "success";
         }
     }
 
-    // 3. RESET PASSWORD
+    // 3. RESET PASSWORD (LOGIC v2 - FIXED)
     if (isset($_POST['reset_password'])) {
         $id = $_POST['reset_id'];
         $email = $_POST['reset_email'];
-        $new_pass = generateRandomPassword();
+        $new_pass = generateRandomPassword(10);
         $hashed = password_hash($new_pass, PASSWORD_DEFAULT);
-        $upd = $conn->query("UPDATE users SET password='$hashed' WHERE id=$id");
+        $conn->query("UPDATE users SET password='$hashed' WHERE id=$id");
         
-        if($upd) {
-            $blocks = "<div class='row'><span class='label'>New Password</span><div class='val'>$new_pass</div></div>";
-            $body = getModernEmailBody("Password Reset", "Your password has been reset.", $blocks, "Login Now");
-            sendSystemEmail($email, "Password Reset Notification", $body);
-            $msg = "Password reset & email sent."; $msg_type = "success";
+        $contentBlocks = "<div class='info-row'><span class='label'>Account Email</span><div class='value'>$email</div></div>
+                          <div class='info-row'><span class='label'>New Password</span><div class='value'>$new_pass</div></div>";
+        $emailBody = getModernEmailBody("Password Reset", "Your password has been reset by the administrator. Use the new password below to login:", $contentBlocks, "Login Now");
+        
+        if (sendSystemEmail($email, 'Security Notice - Password Reset', $emailBody)) {
+            $msg = "Password reset & sent to $email."; $msg_type = "success";
         } else {
-            $msg = "Reset failed: " . $conn->error; $msg_type = "error";
+            $msg = "Password reset but Email failed."; $msg_type = "warning";
         }
     }
 }
 
-// --- FETCH USERS ---
+// --- FETCH USERS (BAWAAN v1 - DIPERTAHANKAN) ---
 $sql = "SELECT u.*, GROUP_CONCAT(c.id) as assigned_ids, GROUP_CONCAT(c.company_name SEPARATOR ', ') as assigned_names 
         FROM users u 
         LEFT JOIN user_company_access uca ON u.id = uca.user_id 
@@ -278,14 +275,11 @@ $where = [];
 if (!$is_admin) {
     $my_comp_ids_str = implode(',', array_keys($raw_companies));
     if (empty($my_comp_ids_str)) {
-        // If user has no companies assigned, can only see self
         $where[] = "u.id = $current_user_id";
     } else {
-        // See self OR users who have access to user's companies
         $where[] = "(u.id = $current_user_id OR u.id IN (
             SELECT DISTINCT user_id FROM user_company_access WHERE company_id IN ($my_comp_ids_str)
         ))";
-        // Hide admins from regular users
         $where[] = "u.role NOT IN ('superadmin', 'admin')";
     }
 }
@@ -397,7 +391,7 @@ $total_users = $users->num_rows;
                                         default => 'bg-slate-50 text-slate-600 border-slate-100'
                                     };
                                     
-                                    // Use single quotes for HTML attributes to avoid conflict with JSON double quotes
+                                    // Secure JSON encode untuk data edit
                                     $editData = htmlspecialchars(json_encode([
                                         'id' => $u['id'],
                                         'username' => $u['username'],
@@ -446,10 +440,10 @@ $total_users = $users->num_rows;
                                         <div class="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                             <button type="button" onclick="editUser(<?= $editData ?>)" class="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all"><i class="ph ph-pencil-simple text-lg"></i></button>
                                             
-                                            <button type="button" onclick="confirmReset('<?= $u['id'] ?>', '<?= addslashes($u['email']) ?>')" class="p-2 rounded-lg text-slate-400 hover:text-amber-500 hover:bg-amber-50 transition-all"><i class="ph ph-key text-lg"></i></button>
+                                            <button type="button" onclick="confirmReset(<?= $u['id'] ?>, '<?= $u['email'] ?>')" class="p-2 rounded-lg text-slate-400 hover:text-amber-500 hover:bg-amber-50 transition-all"><i class="ph ph-key text-lg"></i></button>
                                             
                                             <?php if($u['id'] != $current_user_id): ?>
-                                            <button type="button" onclick="confirmDelete('<?= $u['id'] ?>', '<?= addslashes($u['username']) ?>')" class="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"><i class="ph ph-trash text-lg"></i></button>
+                                            <button type="button" onclick="confirmDelete(<?= $u['id'] ?>, '<?= addslashes($u['username']) ?>')" class="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"><i class="ph ph-trash text-lg"></i></button>
                                             <?php endif; ?>
                                         </div>
                                     </td>
@@ -583,47 +577,70 @@ $total_users = $users->num_rows;
 
     <div id="deleteModal" class="fixed inset-0 z-50 hidden">
         <div class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm" onclick="closeModal('deleteModal')"></div>
-        <div class="fixed inset-0 z-10 flex items-center justify-center p-4">
-            <div class="bg-white dark:bg-darkcard rounded-2xl shadow-xl p-6 text-center max-w-sm w-full scale-95 opacity-0 transition-all" id="deletePanel">
-                <div class="bg-red-100 w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600"><i class="ph ph-trash text-3xl"></i></div>
-                <h3 class="font-bold text-lg mb-2">Delete User?</h3>
-                <p class="text-sm text-slate-500 mb-6">Confirm deletion of <strong id="delUserName"></strong>?</p>
-                <form method="POST" class="flex gap-3 justify-center">
-                    <input type="hidden" name="delete_user" value="1"><input type="hidden" name="delete_id" id="deleteId">
-                    <button type="button" onclick="closeModal('deleteModal')" class="px-4 py-2 border rounded-xl font-bold">Cancel</button>
-                    <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-xl font-bold">Delete</button>
-                </form>
+        <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+            <div class="flex min-h-full items-center justify-center p-4 text-center">
+                <div class="relative transform overflow-hidden rounded-2xl bg-white dark:bg-darkcard text-left shadow-2xl w-full max-w-sm p-6 scale-95 opacity-0 transition-all" id="deletePanel">
+                    <div class="text-center">
+                        <div class="bg-red-100 dark:bg-red-900/30 w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600 animate-pulse"><i class="ph ph-trash text-3xl"></i></div>
+                        <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2">Delete User?</h3>
+                        <p class="text-sm text-slate-500 mb-6">You are about to delete <strong id="delUserName" class="text-slate-800 dark:text-white"></strong>. This action is irreversible.</p>
+                        <form method="POST" class="flex justify-center gap-3">
+                            <input type="hidden" name="delete_user" value="1">
+                            <input type="hidden" name="delete_id" id="deleteId">
+                            <button type="button" onclick="closeModal('deleteModal')" class="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">Cancel</button>
+                            <button type="submit" class="px-4 py-2.5 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700 shadow-lg shadow-red-500/30 transition-all active:scale-95">Yes, Delete</button>
+                        </form>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
     <div id="resetModal" class="fixed inset-0 z-50 hidden">
         <div class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm" onclick="closeModal('resetModal')"></div>
-        <div class="fixed inset-0 z-10 flex items-center justify-center p-4">
-            <div class="bg-white dark:bg-darkcard rounded-2xl shadow-xl p-6 text-center max-w-sm w-full scale-95 opacity-0 transition-all" id="resetPanel">
-                <div class="bg-amber-100 w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 text-amber-600"><i class="ph ph-key text-3xl"></i></div>
-                <h3 class="font-bold text-lg mb-2">Reset Password?</h3>
-                <p class="text-sm text-slate-500 mb-6">New password will be emailed to <strong id="resetEmailText"></strong>.</p>
-                <form method="POST" class="flex gap-3 justify-center" onsubmit="showProcessing(this)">
-                    <input type="hidden" name="reset_password" value="1"><input type="hidden" name="reset_id" id="resetId"><input type="hidden" name="reset_email" id="resetEmail">
-                    <button type="button" onclick="closeModal('resetModal')" class="px-4 py-2 border rounded-xl font-bold">Cancel</button>
-                    <button type="submit" class="px-4 py-2 bg-amber-500 text-white rounded-xl font-bold">Confirm</button>
-                </form>
+        <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+            <div class="flex min-h-full items-center justify-center p-4 text-center">
+                <div class="relative transform overflow-hidden rounded-2xl bg-white dark:bg-darkcard text-left shadow-2xl w-full max-w-sm p-6 scale-95 opacity-0 transition-all" id="resetPanel">
+                    <div class="text-center">
+                        <div class="bg-amber-100 dark:bg-amber-900/30 w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 text-amber-600"><i class="ph ph-key text-3xl"></i></div>
+                        <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2">Reset Password?</h3>
+                        <p class="text-sm text-slate-500 mb-6">A new password will be generated and emailed to <strong id="resetEmailText" class="text-slate-800 dark:text-white"></strong>.</p>
+                        <form method="POST" class="flex justify-center gap-3" onsubmit="showProcessing(this)">
+                            <input type="hidden" name="reset_password" value="1">
+                            <input type="hidden" name="reset_id" id="resetId">
+                            <input type="hidden" name="reset_email" id="resetEmail">
+                            <button type="button" onclick="closeModal('resetModal')" class="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">Cancel</button>
+                            <button type="submit" class="px-4 py-2.5 rounded-xl bg-amber-500 text-white font-bold hover:bg-amber-600 shadow-lg shadow-amber-500/30 transition-all active:scale-95">Confirm Reset</button>
+                        </form>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
     <script src="assets/js/main.js"></script>
     <script>
+        // --- ANIMASI MODAL (DARI v2 - LEBIH STABIL) ---
         function animateModal(modalId, show) {
             const modal = document.getElementById(modalId);
-            const backdrop = modal.querySelector('div[id$="Backdrop"]');
+            const backdrop = modal.querySelector('div[id$="Backdrop"]') || modal.querySelector('.backdrop-blur-sm');
             let panel = modal.querySelector('div[id$="Panel"]');
+
             if(show) {
                 modal.classList.remove('hidden');
-                setTimeout(() => { backdrop.classList.remove('opacity-0'); panel.classList.remove('opacity-0', 'scale-95'); panel.classList.add('opacity-100', 'scale-100'); }, 10);
+                setTimeout(() => {
+                    if(backdrop) backdrop.classList.remove('opacity-0');
+                    if(panel) {
+                        panel.classList.remove('opacity-0', 'scale-95');
+                        panel.classList.add('opacity-100', 'scale-100');
+                    }
+                }, 10);
             } else {
-                backdrop.classList.add('opacity-0'); panel.classList.remove('opacity-100', 'scale-100'); panel.classList.add('opacity-0', 'scale-95');
+                if(backdrop) backdrop.classList.add('opacity-0');
+                if(panel) {
+                    panel.classList.remove('opacity-100', 'scale-100');
+                    panel.classList.add('opacity-0', 'scale-95');
+                }
                 setTimeout(() => modal.classList.add('hidden'), 300);
             }
         }
@@ -647,6 +664,7 @@ $total_users = $users->num_rows;
             document.getElementById('modal_role').value = data.role;
             const globalSwitch = document.getElementById('is_global');
             if(globalSwitch) { globalSwitch.checked = (data.is_global == 1); toggleCompanyList(); }
+            
             const assigned = data.assigned_ids ? data.assigned_ids.split(',') : [];
             const checkboxes = document.querySelectorAll('.comp-check');
             let allChecked = true;
@@ -680,6 +698,7 @@ $total_users = $users->num_rows;
 
         function closeModal(id) { animateModal(id, false); }
 
+        // --- FUNGSI DELETE & RESET (DARI v2) ---
         function confirmDelete(id, name) { 
             document.getElementById('deleteId').value = id; 
             document.getElementById('delUserName').innerText = name; 
@@ -693,7 +712,11 @@ $total_users = $users->num_rows;
             animateModal('resetModal', true); 
         }
 
-        function showProcessing(form) { form.querySelector('button[type="submit"]').innerHTML = '<i class="ph ph-spinner animate-spin"></i> Processing...'; }
+        function showProcessing(form) { 
+            const btn = form.querySelector('button[type="submit"]');
+            btn.innerHTML = '<i class="ph ph-spinner animate-spin"></i> Processing...';
+            btn.disabled = true;
+        }
         
         function hideToast() { document.getElementById('toast').classList.add('translate-x-full', 'opacity-0'); }
         
