@@ -33,10 +33,24 @@ function hasAccess($page_role_required) {
     return false;
 }
 
-// Helper: Ambil ID Company yang boleh diakses user
+// Helper: Ambil ID Company yang boleh diakses user (UPDATED UNTUK API)
 function getClientIdsForUser($user_id) {
     global $conn;
-    $role = $_SESSION['role'];
+    
+    // Cek apakah dipanggil via Web (Session) atau via API (Stateless)
+    $role = '';
+    if (isset($_SESSION['role'])) {
+        $role = $_SESSION['role'];
+    } else {
+        // Jika tidak ada session (dipanggil via API), ambil role dari database
+        $stmt_role = $conn->prepare("SELECT role FROM users WHERE id = ?");
+        $stmt_role->bind_param("i", $user_id);
+        $stmt_role->execute();
+        $res_role = $stmt_role->get_result();
+        if ($row = $res_role->fetch_assoc()) {
+            $role = $row['role'];
+        }
+    }
 
     // Superadmin & Admin melihat SEMUA data (biasanya)
     // Jika Admin hanya boleh lihat client tertentu, ubah logika ini
