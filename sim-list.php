@@ -38,7 +38,6 @@ if ($allowed_comps === 'NONE') {
 // --- CEK VISIBILITAS TOMBOL REFRESH INDOSAT ---
 $showIndosatRefreshBtn = false;
 if ($company_condition !== " AND 1=0 ") {
-    // Cek apakah user ini memiliki setidaknya 1 nomor indosat di perusahaannya
     $checkIndosat = $conn->query("SELECT id FROM sims WHERE 1=1 $company_condition AND (msisdn LIKE '62815%' OR msisdn LIKE '62816%' OR msisdn LIKE '62856%' OR msisdn LIKE '62857%') LIMIT 1");
     if ($checkIndosat->num_rows > 0) {
         $showIndosatRefreshBtn = true;
@@ -521,15 +520,12 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                     $denominator = $totalRaw;
                                     
                                     if ($isIndosat) {
-                                        $currentMonth = date('Y-m');
                                         $dbMaxRollover = floatval($row['max_rollover'] ?? 0);
-                                        $dbRolloverPeriod = $row['rollover_period'] ?? '';
                                         
-                                        // Auto reset (hanya di sisi UI) jika periode bulanan sudah berganti. 
-                                        // Saat nanti API disinkronisasi, data DB akan ikut menyesuaikan ke rollover terkini.
-                                        $effectiveMaxRollover = ($dbRolloverPeriod === $currentMonth) ? max($dbMaxRollover, $rolloverRaw) : $rolloverRaw;
+                                        // Gunakan max_rollover hasil rekaman dari Cron / Manual Sync.
+                                        // Jika 0, fallback ke rollover_flow saat ini.
+                                        $effectiveMaxRollover = ($dbMaxRollover > 0) ? $dbMaxRollover : $rolloverRaw;
                                         
-                                        // Gunakan max rollover sebagai penyebut di kolom Usage
                                         if ($effectiveMaxRollover > 0) {
                                             $denominator = $effectiveMaxRollover;
                                         }
@@ -814,7 +810,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
             { id: 'iccid', name: 'ICCID', width: 160, frozen: false, visible: true },
             { id: 'sn', name: 'SN', width: 100, frozen: false, visible: true },
             { id: 'package', name: 'Package', width: 180, frozen: false, visible: true }, 
-            { id: 'rollover', name: 'Data Rollover', width: 140, frozen: false, visible: true },
+            { id: 'rollover', name: 'Data Rollover', width: 140, frozen: false, visible: true }, // NEW COLUMN
             { id: 'usage', name: 'Usage', width: 200, frozen: false, visible: true },
             { id: 'action', name: 'Action', width: 80, frozen: false, visible: true }
         ];
