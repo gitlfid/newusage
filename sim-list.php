@@ -532,7 +532,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                         </div>
                                     </td>
                                     <td data-col="msisdn" class="px-4 py-3 font-mono font-bold text-primary dark:text-indigo-400 select-all">
-                                        <a href="sim-detail.php?id=<?= $row_id ?>" class="hover:underline">
+                                        <a href="sim-detail?id=<?= $row_id ?>" class="hover:underline">
                                             <?= htmlspecialchars($row['msisdn'] ?? '-') ?>
                                         </a>
                                     </td>
@@ -604,7 +604,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                         </div>
                                     </td>
                                     <td data-col="action" class="px-4 py-3 text-center">
-                                        <a href="sim-detail.php?id=<?= $row_id ?>" class="p-2 rounded-lg text-slate-400 hover:text-primary hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-all inline-block"><i class="ph ph-caret-right text-lg"></i></a>
+                                        <a href="sim-detail?id=<?= $row_id ?>" class="p-2 rounded-lg text-slate-400 hover:text-primary hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-all inline-block"><i class="ph ph-caret-right text-lg"></i></a>
                                     </td>
                                 </tr>
                                 <?php endwhile; else: ?>
