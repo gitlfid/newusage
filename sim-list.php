@@ -360,11 +360,12 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                 </div>
 
                 <div class="relative z-10 bg-white dark:bg-darkcard p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 mb-6 animate-fade-in-up" style="animation-delay: 0.1s;">
-                    <div class="flex flex-wrap gap-4 items-end">
-                        <form method="GET" id="filterForm" class="flex flex-wrap gap-4 items-end flex-grow">
-                            <input type="hidden" name="size" value="<?= $pageSize ?>">
+                    <form method="GET" id="filterForm" class="flex flex-col gap-5">
+                        <input type="hidden" name="size" value="<?= $pageSize ?>">
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
                             
-                            <div class="flex-grow min-w-[200px] max-w-[300px]">
+                            <div class="lg:col-span-1">
                                 <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Search (Multiple)</label>
                                 <div class="relative group">
                                     <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors"></i>
@@ -372,7 +373,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                 </div>
                             </div>
 
-                            <div class="flex-grow min-w-[150px] max-w-[250px]">
+                            <div class="lg:col-span-1">
                                 <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Company</label>
                                 <select name="company" onchange="this.form.submit()" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
                                     <option value="">All Companies</option>
@@ -382,7 +383,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                 </select>
                             </div>
                             
-                            <div class="flex-grow min-w-[80px] max-w-[200px]">
+                            <div class="lg:col-span-1">
                                 <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Batch</label>
                                 <select name="batch" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
                                     <option value="">All Batches</option>
@@ -392,7 +393,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                 </select>
                             </div>
 
-                            <div class="flex-grow min-w-[120px] max-w-[200px]">
+                            <div class="lg:col-span-1">
                                 <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Invoice No</label>
                                 <select name="invoice" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
                                     <option value="">All Invoices</option>
@@ -402,7 +403,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                 </select>
                             </div>
 
-                            <div class="min-w-[120px]">
+                            <div class="lg:col-span-1">
                                 <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Level</label>
                                 <div class="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1 border border-slate-200 dark:border-slate-700 h-[42px]">
                                     <?php foreach(['' => 'All', '1'=>'L1', '2'=>'L2', '3'=>'L3'] as $val => $lbl): 
@@ -415,10 +416,21 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                     <?php endforeach; ?>
                                 </div>
                             </div>
+                        </div>
 
-                            <div class="flex items-center gap-2 ml-auto">
+                        <div class="flex flex-col sm:flex-row justify-between items-center gap-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+                            
+                            <div>
+                                <?php if($showIndosatRefreshBtn): ?>
+                                <button type="button" onclick="document.getElementById('syncIndosatForm').submit(); this.innerHTML='<i class=\'ph ph-spinner animate-spin text-xl\'></i> Syncing...';" class="h-[40px] px-5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 font-bold text-xs transition-all active:scale-95" title="Sync API Indosat">
+                                    <i class="ph ph-arrows-clockwise text-lg"></i> Sync Indosat
+                                </button>
+                                <?php endif; ?>
+                            </div>
+
+                            <div class="flex items-center gap-2">
                                 <div class="relative group">
-                                    <button type="button" onclick="document.getElementById('colManager').classList.toggle('hidden')" class="h-[42px] px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 shadow-sm transition-colors flex items-center gap-2">
+                                    <button type="button" onclick="document.getElementById('colManager').classList.toggle('hidden')" class="h-[40px] px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 shadow-sm transition-colors flex items-center gap-2">
                                         <i class="ph ph-columns text-lg"></i> Cols
                                     </button>
                                     <div id="colManager" class="hidden absolute right-0 top-12 w-64 bg-white dark:bg-darkcard rounded-xl shadow-2xl border border-slate-100 dark:border-slate-700 p-4 z-[60] animate-in fade-in zoom-in-95 origin-top-right">
@@ -430,8 +442,8 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                     </div>
                                 </div>
                                 
-                                <div class="relative h-[42px] w-[80px]">
-                                    <select id="unitSelector" onchange="updateDataUnits()" class="appearance-none w-full h-full pl-3 pr-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-600 dark:text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none cursor-pointer">
+                                <div class="relative h-[40px] min-w-[80px]">
+                                    <select id="unitSelector" onchange="updateDataUnits()" class="appearance-none w-full h-full pl-3 pr-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-600 dark:text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none cursor-pointer shadow-sm">
                                         <option value="KB">KB</option>
                                         <option value="MB" selected>MB</option>
                                         <option value="GB">GB</option>
@@ -439,21 +451,18 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                     <i class="ph ph-caret-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
                                 </div>
 
-                                <button type="submit" id="btnFilter" class="h-[42px] w-[42px] bg-primary hover:bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-500/20 flex items-center justify-center transition-all active:scale-95 flex-shrink-0">
-                                    <i class="ph ph-funnel text-xl"></i>
+                                <button type="submit" id="btnFilter" class="h-[40px] w-[40px] bg-primary hover:bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-500/20 flex items-center justify-center transition-all active:scale-95 flex-shrink-0">
+                                    <i class="ph ph-funnel text-lg"></i>
                                 </button>
                             </div>
-                        </form>
+                        </div>
+                    </form>
 
-                        <?php if($showIndosatRefreshBtn): ?>
-                        <form method="POST" onsubmit="this.querySelector('button').innerHTML='<i class=\'ph ph-spinner animate-spin text-xl\'></i>';">
-                            <input type="hidden" name="action" value="refresh_indosat_api">
-                            <button type="submit" class="h-[42px] px-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 font-bold text-xs transition-all active:scale-95 flex-shrink-0" title="Sync API Indosat">
-                                <i class="ph ph-arrows-clockwise text-xl"></i> Sync Indosat
-                            </button>
-                        </form>
-                        <?php endif; ?>
-                    </div>
+                    <?php if($showIndosatRefreshBtn): ?>
+                    <form method="POST" id="syncIndosatForm" class="hidden">
+                        <input type="hidden" name="action" value="refresh_indosat_api">
+                    </form>
+                    <?php endif; ?>
                 </div>
 
                 <div class="bg-white dark:bg-darkcard rounded-2xl shadow-lg shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 overflow-hidden animate-fade-in-up" style="animation-delay: 0.2s;">
@@ -477,7 +486,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                     <th data-col="iccid" class="px-4 py-4">ICCID</th>
                                     <th data-col="sn" class="px-4 py-4">SN</th>
                                     <th data-col="package" class="px-4 py-4 text-center">Package</th>
-                                    <th data-col="rollover" class="px-4 py-4 text-center">Data Rollover</th>
+                                    <th data-col="rollover" class="px-4 py-4 text-center">Data Rollover</th> 
                                     <th data-col="usage" class="px-4 py-4 min-w-[180px]">Usage</th>
                                     <th data-col="action" class="px-4 py-4 text-center">Action</th>
                                 </tr>
@@ -488,7 +497,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                     $companyName = $row['company_name'] ?? 'Unknown';
                                     $displayProject = !empty($row['custom_project']) ? $row['custom_project'] : $row['default_project'];
                                     
-                                    // Ambil data murni dari database (tidak lagi tembak API saat loading halaman)
+                                    // Ambil data murni dari database
                                     $totalRaw = floatval($row['total_flow'] ?? 0);
                                     $usedRaw = floatval($row['used_flow'] ?? 0);
                                     $rolloverRaw = floatval($row['rollover_flow'] ?? 0);
