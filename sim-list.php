@@ -1,6 +1,6 @@
 <?php 
 include 'config.php';
-require_once 'config-api.php'; // <-- MEMANGGIL PUSAT API DISINI
+require_once 'config-api.php'; 
 checkLogin();
 
 enforcePermission('sim_list');
@@ -35,8 +35,19 @@ if ($allowed_comps === 'NONE') {
     $company_condition = " AND sims.company_id IN ($ids_str) ";
 } 
 
+// --- CEK VISIBILITAS TOMBOL REFRESH INDOSAT ---
+$showIndosatRefreshBtn = false;
+if ($company_condition !== " AND 1=0 ") {
+    // Cek apakah user ini memiliki setidaknya 1 nomor indosat di perusahaannya
+    $checkIndosat = $conn->query("SELECT id FROM sims WHERE 1=1 $company_condition AND (msisdn LIKE '62815%' OR msisdn LIKE '62816%' OR msisdn LIKE '62856%' OR msisdn LIKE '62857%') LIMIT 1");
+    if ($checkIndosat->num_rows > 0) {
+        $showIndosatRefreshBtn = true;
+    }
+}
+
 // --- 2. HANDLE POST ACTIONS ---
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    
     // A. UPDATE TAGS
     if (isset($_POST['action']) && $_POST['action'] == 'update_tags') {
         $ids_raw = $_POST['sim_ids']; 
@@ -106,6 +117,58 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         }
         header("Location: sim-list.php?msg=transfer_success");
+        exit();
+    }
+
+    // D. REFRESH INDOSAT API MANUAL DARI TOMBOL
+    if (isset($_POST['action']) && $_POST['action'] == 'refresh_indosat_api') {
+        set_time_limit(0); 
+        $token = getIndosatToken();
+        if ($token) {
+            // Hanya ambil data Indosat sesuai hak akses user ini
+            $sql = "SELECT id, msisdn, total_flow, rollover_flow, used_flow FROM sims WHERE 1=1 $company_condition AND (msisdn LIKE '62815%' OR msisdn LIKE '62816%' OR msisdn LIKE '62856%' OR msisdn LIKE '62857%')";
+            $res = $conn->query($sql);
+            $stmt = $conn->prepare("UPDATE sims SET total_flow=?, rollover_flow=?, used_flow=? WHERE id=?");
+            
+            while($row = $res->fetch_assoc()) {
+                $msisdn = $row['msisdn'];
+                $id = $row['id'];
+                
+                $totalRaw = floatval($row['total_flow']);
+                $rolloverRaw = floatval($row['rollover_flow']);
+                $usedRaw = floatval($row['used_flow']);
+                
+                $benefit = getIndosatBenefit($token, $msisdn);
+                $traffic = getIndosatTraffic($token, $msisdn);
+                
+                if (isset($benefit['services'][0]['quotas'])) {
+                    foreach ($benefit['services'][0]['quotas'] as $quota) {
+                        if (strtoupper($quota['type']) === 'DATA' || stripos($quota['name'], 'utama') !== false) {
+                            $valRemaining = floatval($quota['remaining'] ?? 0);
+                            $unit = strtoupper($quota['unit'] ?? 'GB');
+                            $totalRaw = ($unit === 'MB') ? $valRemaining * 1048576 : ($valRemaining * 1000) * 1048576;
+                        }
+                        if (strtoupper($quota['type']) === 'DATAROLLOVER' || stripos($quota['name'], 'rollover') !== false) {
+                            $valRemaining = floatval($quota['remaining'] ?? 0);
+                            $unit = strtoupper($quota['unit'] ?? 'GB');
+                            $rolloverRaw = ($unit === 'MB') ? $valRemaining * 1048576 : ($valRemaining * 1000) * 1048576;
+                        }
+                    }
+                }
+                
+                if (isset($traffic['traffic']['data'][0])) {
+                    $valUsage = floatval($traffic['traffic']['data'][0]['value'] ?? 0);
+                    $unit = strtoupper($traffic['traffic']['data'][0]['unit'] ?? 'GB');
+                    if ($unit === 'MB') $usedRaw = $valUsage * 1048576;
+                    elseif ($unit === 'KB') $usedRaw = ($valUsage / 1000) * 1048576;
+                    else $usedRaw = ($valUsage * 1000) * 1048576;
+                }
+                
+                $stmt->bind_param("dddi", $totalRaw, $rolloverRaw, $usedRaw, $id);
+                $stmt->execute();
+            }
+        }
+        header("Location: sim-list.php?msg=api_synced");
         exit();
     }
 }
@@ -297,89 +360,100 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                 </div>
 
                 <div class="relative z-10 bg-white dark:bg-darkcard p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 mb-6 animate-fade-in-up" style="animation-delay: 0.1s;">
-                    <form method="GET" id="filterForm" class="flex flex-wrap gap-4 items-end">
-                        <input type="hidden" name="size" value="<?= $pageSize ?>">
-                        
-                        <div class="flex-grow min-w-[200px] max-w-[300px]">
-                            <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Search (Multiple)</label>
-                            <div class="relative group">
-                                <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors"></i>
-                                <input type="text" name="search" id="searchInput" onkeydown="handleSearchEnter(event)" value="<?= htmlspecialchars($s_keyword) ?>" placeholder="ICCID, IMSI, MSISDN..." class="w-full h-[42px] pl-9 pr-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm">
-                            </div>
-                        </div>
-
-                        <div class="flex-grow min-w-[150px] max-w-[250px]">
-                            <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Company</label>
-                            <select name="company" onchange="this.form.submit()" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
-                                <option value="">All Companies</option>
-                                <?php foreach($compArr as $c): ?>
-                                    <option value="<?= $c['id'] ?>" <?= $f_company == $c['id'] ? 'selected' : '' ?>><?= $c['company_name'] ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        
-                        <div class="flex-grow min-w-[80px] max-w-[200px]">
-                            <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Batch</label>
-                            <select name="batch" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
-                                <option value="">All Batches</option>
-                                <?php foreach($batchArr as $b): ?>
-                                    <option value="<?= htmlspecialchars($b) ?>" <?= $f_batch === $b ? 'selected' : '' ?>><?= htmlspecialchars($b) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-
-                        <div class="flex-grow min-w-[120px] max-w-[200px]">
-                            <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Invoice No</label>
-                            <select name="invoice" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
-                                <option value="">All Invoices</option>
-                                <?php foreach($invoiceArr as $inv): ?>
-                                    <option value="<?= $inv ?>" <?= $f_invoice == $inv ? 'selected' : '' ?>><?= $inv ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-
-                        <div class="min-w-[120px]">
-                            <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Level</label>
-                            <div class="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1 border border-slate-200 dark:border-slate-700 h-[42px]">
-                                <?php foreach(['' => 'All', '1'=>'L1', '2'=>'L2', '3'=>'L3'] as $val => $lbl): 
-                                    $active = ((string)$f_level === (string)$val) ? 'bg-white dark:bg-slate-600 text-primary dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700';
-                                ?>
-                                <label class="flex-1 cursor-pointer relative h-full">
-                                    <input type="radio" name="level" value="<?= $val ?>" class="sr-only" <?= ((string)$f_level === (string)$val) ? 'checked' : '' ?> onclick="this.form.submit()">
-                                    <div class="h-full flex items-center justify-center rounded-lg text-xs font-bold transition-all <?= $active ?>"><?= $lbl ?></div>
-                                </label>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-
-                        <div class="flex items-center gap-2 ml-auto">
-                            <div class="relative group">
-                                <button type="button" onclick="document.getElementById('colManager').classList.toggle('hidden')" class="h-[42px] px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 shadow-sm transition-colors flex items-center gap-2">
-                                    <i class="ph ph-columns text-lg"></i> Cols
-                                </button>
-                                <div id="colManager" class="hidden absolute right-0 top-12 w-64 bg-white dark:bg-darkcard rounded-xl shadow-2xl border border-slate-100 dark:border-slate-700 p-4 z-[60] animate-in fade-in zoom-in-95 origin-top-right">
-                                    <div class="flex justify-between items-center mb-3">
-                                        <h4 class="text-xs font-bold uppercase text-slate-500">Columns</h4>
-                                        <button type="button" onclick="resetColumnConfig()" class="text-[10px] text-primary hover:underline">Reset</button>
-                                    </div>
-                                    <div id="colListContainer" class="flex flex-col gap-1 max-h-[250px] overflow-y-auto no-scrollbar"></div>
+                    <div class="flex flex-wrap gap-4 items-end">
+                        <form method="GET" id="filterForm" class="flex flex-wrap gap-4 items-end flex-grow">
+                            <input type="hidden" name="size" value="<?= $pageSize ?>">
+                            
+                            <div class="flex-grow min-w-[200px] max-w-[300px]">
+                                <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Search (Multiple)</label>
+                                <div class="relative group">
+                                    <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors"></i>
+                                    <input type="text" name="search" id="searchInput" onkeydown="handleSearchEnter(event)" value="<?= htmlspecialchars($s_keyword) ?>" placeholder="ICCID, IMSI, MSISDN..." class="w-full h-[42px] pl-9 pr-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm">
                                 </div>
                             </div>
-                            
-                            <div class="relative h-[42px] w-[80px]">
-                                <select id="unitSelector" onchange="updateDataUnits()" class="appearance-none w-full h-full pl-3 pr-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-600 dark:text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none cursor-pointer">
-                                    <option value="KB">KB</option>
-                                    <option value="MB" selected>MB</option>
-                                    <option value="GB">GB</option>
+
+                            <div class="flex-grow min-w-[150px] max-w-[250px]">
+                                <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Company</label>
+                                <select name="company" onchange="this.form.submit()" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
+                                    <option value="">All Companies</option>
+                                    <?php foreach($compArr as $c): ?>
+                                        <option value="<?= $c['id'] ?>" <?= $f_company == $c['id'] ? 'selected' : '' ?>><?= $c['company_name'] ?></option>
+                                    <?php endforeach; ?>
                                 </select>
-                                <i class="ph ph-caret-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
+                            </div>
+                            
+                            <div class="flex-grow min-w-[80px] max-w-[200px]">
+                                <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Batch</label>
+                                <select name="batch" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
+                                    <option value="">All Batches</option>
+                                    <?php foreach($batchArr as $b): ?>
+                                        <option value="<?= htmlspecialchars($b) ?>" <?= $f_batch === $b ? 'selected' : '' ?>><?= htmlspecialchars($b) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
                             </div>
 
-                            <button type="submit" id="btnFilter" class="h-[42px] w-[42px] bg-primary hover:bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-500/20 flex items-center justify-center transition-all active:scale-95 flex-shrink-0">
-                                <i class="ph ph-funnel text-xl"></i>
+                            <div class="flex-grow min-w-[120px] max-w-[200px]">
+                                <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Invoice No</label>
+                                <select name="invoice" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
+                                    <option value="">All Invoices</option>
+                                    <?php foreach($invoiceArr as $inv): ?>
+                                        <option value="<?= $inv ?>" <?= $f_invoice == $inv ? 'selected' : '' ?>><?= $inv ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <div class="min-w-[120px]">
+                                <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Level</label>
+                                <div class="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1 border border-slate-200 dark:border-slate-700 h-[42px]">
+                                    <?php foreach(['' => 'All', '1'=>'L1', '2'=>'L2', '3'=>'L3'] as $val => $lbl): 
+                                        $active = ((string)$f_level === (string)$val) ? 'bg-white dark:bg-slate-600 text-primary dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700';
+                                    ?>
+                                    <label class="flex-1 cursor-pointer relative h-full">
+                                        <input type="radio" name="level" value="<?= $val ?>" class="sr-only" <?= ((string)$f_level === (string)$val) ? 'checked' : '' ?> onclick="this.form.submit()">
+                                        <div class="h-full flex items-center justify-center rounded-lg text-xs font-bold transition-all <?= $active ?>"><?= $lbl ?></div>
+                                    </label>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-2 ml-auto">
+                                <div class="relative group">
+                                    <button type="button" onclick="document.getElementById('colManager').classList.toggle('hidden')" class="h-[42px] px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 shadow-sm transition-colors flex items-center gap-2">
+                                        <i class="ph ph-columns text-lg"></i> Cols
+                                    </button>
+                                    <div id="colManager" class="hidden absolute right-0 top-12 w-64 bg-white dark:bg-darkcard rounded-xl shadow-2xl border border-slate-100 dark:border-slate-700 p-4 z-[60] animate-in fade-in zoom-in-95 origin-top-right">
+                                        <div class="flex justify-between items-center mb-3">
+                                            <h4 class="text-xs font-bold uppercase text-slate-500">Columns</h4>
+                                            <button type="button" onclick="resetColumnConfig()" class="text-[10px] text-primary hover:underline">Reset</button>
+                                        </div>
+                                        <div id="colListContainer" class="flex flex-col gap-1 max-h-[250px] overflow-y-auto no-scrollbar"></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="relative h-[42px] w-[80px]">
+                                    <select id="unitSelector" onchange="updateDataUnits()" class="appearance-none w-full h-full pl-3 pr-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-600 dark:text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none cursor-pointer">
+                                        <option value="KB">KB</option>
+                                        <option value="MB" selected>MB</option>
+                                        <option value="GB">GB</option>
+                                    </select>
+                                    <i class="ph ph-caret-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
+                                </div>
+
+                                <button type="submit" id="btnFilter" class="h-[42px] w-[42px] bg-primary hover:bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-500/20 flex items-center justify-center transition-all active:scale-95 flex-shrink-0">
+                                    <i class="ph ph-funnel text-xl"></i>
+                                </button>
+                            </div>
+                        </form>
+
+                        <?php if($showIndosatRefreshBtn): ?>
+                        <form method="POST" onsubmit="this.querySelector('button').innerHTML='<i class=\'ph ph-spinner animate-spin text-xl\'></i>';">
+                            <input type="hidden" name="action" value="refresh_indosat_api">
+                            <button type="submit" class="h-[42px] px-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 font-bold text-xs transition-all active:scale-95 flex-shrink-0" title="Sync API Indosat">
+                                <i class="ph ph-arrows-clockwise text-xl"></i> Sync Indosat
                             </button>
-                        </div>
-                    </form>
+                        </form>
+                        <?php endif; ?>
+                    </div>
                 </div>
 
                 <div class="bg-white dark:bg-darkcard rounded-2xl shadow-lg shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 overflow-hidden animate-fade-in-up" style="animation-delay: 0.2s;">
@@ -403,7 +477,8 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                     <th data-col="iccid" class="px-4 py-4">ICCID</th>
                                     <th data-col="sn" class="px-4 py-4">SN</th>
                                     <th data-col="package" class="px-4 py-4 text-center">Package</th>
-                                    <th data-col="rollover" class="px-4 py-4 text-center">Data Rollover</th> <th data-col="usage" class="px-4 py-4 min-w-[180px]">Usage</th>
+                                    <th data-col="rollover" class="px-4 py-4 text-center">Data Rollover</th>
+                                    <th data-col="usage" class="px-4 py-4 min-w-[180px]">Usage</th>
                                     <th data-col="action" class="px-4 py-4 text-center">Action</th>
                                 </tr>
                             </thead>
@@ -413,63 +488,13 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                     $companyName = $row['company_name'] ?? 'Unknown';
                                     $displayProject = !empty($row['custom_project']) ? $row['custom_project'] : $row['default_project'];
                                     
-                                    // Default DB Values
-                                    $totalRaw = floatval($row['total_flow']??0);
-                                    $usedRaw = floatval($row['used_flow']??0);
-                                    $rolloverRaw = 0;
+                                    // Ambil data murni dari database (tidak lagi tembak API saat loading halaman)
+                                    $totalRaw = floatval($row['total_flow'] ?? 0);
+                                    $usedRaw = floatval($row['used_flow'] ?? 0);
+                                    $rolloverRaw = floatval($row['rollover_flow'] ?? 0);
                                     
-                                    // Check if Indosat Number
                                     $msisdn = $row['msisdn'] ?? '';
                                     $isIndosat = preg_match('/^(62815|62816|62856|62857)/', $msisdn);
-                                    
-                                    if ($isIndosat) {
-                                        $token = getIndosatToken();
-                                        if ($token) {
-                                            $benefit = getIndosatBenefit($token, $msisdn);
-                                            $traffic = getIndosatTraffic($token, $msisdn);
-                                            
-                                            // Process Benefit (Kuota Utama & Rollover)
-                                            if (isset($benefit['services'][0]['quotas'])) {
-                                                foreach ($benefit['services'][0]['quotas'] as $quota) {
-                                                    // Kuota Utama
-                                                    if (strtoupper($quota['type']) === 'DATA' || stripos($quota['name'], 'utama') !== false) {
-                                                        $valRemaining = floatval($quota['remaining'] ?? 0);
-                                                        $unit = strtoupper($quota['unit'] ?? 'GB');
-                                                        if ($unit === 'MB') {
-                                                            $totalRaw = $valRemaining * 1048576; 
-                                                        } else {
-                                                            // As requested: 50GB = 50000MB
-                                                            $totalRaw = ($valRemaining * 1000) * 1048576;
-                                                        }
-                                                    }
-                                                    // Kuota Rollover
-                                                    if (strtoupper($quota['type']) === 'DATAROLLOVER' || stripos($quota['name'], 'rollover') !== false) {
-                                                        $valRemaining = floatval($quota['remaining'] ?? 0);
-                                                        $unit = strtoupper($quota['unit'] ?? 'GB');
-                                                        if (empty($unit) || $unit === 'GB') {
-                                                            $rolloverRaw = ($valRemaining * 1000) * 1048576;
-                                                        } else if ($unit === 'MB') {
-                                                            $rolloverRaw = $valRemaining * 1048576;
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            
-                                            // Process Traffic (Usage)
-                                            if (isset($traffic['traffic']['data'][0])) {
-                                                $dataTraffic = $traffic['traffic']['data'][0];
-                                                $valUsage = floatval($dataTraffic['value'] ?? 0);
-                                                $unit = strtoupper($dataTraffic['unit'] ?? 'GB');
-                                                if ($unit === 'MB') {
-                                                    $usedRaw = $valUsage * 1048576;
-                                                } else if ($unit === 'KB') {
-                                                    $usedRaw = ($valUsage / 1000) * 1048576;
-                                                } else { // GB
-                                                    $usedRaw = ($valUsage * 1000) * 1048576;
-                                                }
-                                            }
-                                        }
-                                    }
 
                                     $pct = ($totalRaw > 0) ? ($usedRaw / $totalRaw) * 100 : 0;
                                     $barColor = ($pct > 90) ? 'bg-red-500' : (($pct > 70) ? 'bg-yellow-500' : 'bg-emerald-500');
@@ -1014,6 +1039,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
         if(urlParams.get('msg') === 'tags_updated') showToast('Tags updated successfully.');
         if(urlParams.get('msg') === 'project_updated') showToast('Project updated successfully.');
         if(urlParams.get('msg') === 'transfer_success') showToast('SIM cards transferred successfully.');
+        if(urlParams.get('msg') === 'api_synced') showToast('Indosat API data synced successfully.'); // NEW
 
         function changePageSize(size) {
             const url = new URL(window.location.href); url.searchParams.set('size', size); url.searchParams.set('page', 1); window.location.href = url.toString();
