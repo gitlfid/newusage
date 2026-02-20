@@ -4,16 +4,32 @@ checkLogin();
 
 enforcePermission('sim_upload');
 
+// --- Helper untuk Konversi Tanggal Excel ke MySQL Format ---
+function excelDateToMySQL($excelDate) {
+    if (empty($excelDate)) return null;
+    
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $excelDate)) {
+        return $excelDate;
+    }
+    if (is_numeric($excelDate)) {
+        $unix_date = ($excelDate - 25569) * 86400;
+        return gmdate("Y-m-d", $unix_date);
+    }
+    $time = strtotime($excelDate);
+    if ($time !== false) {
+        return date('Y-m-d', $time);
+    }
+    return null; 
+}
+
 // --- PHP BACKEND HANDLER ---
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     
-    // Config untuk upload besar
-    ini_set('display_errors', 0); // Matikan display error HTML agar tidak merusak JSON
+    ini_set('display_errors', 0); 
     ini_set('memory_limit', '512M');
     set_time_limit(300);
     header('Content-Type: application/json');
     
-    // Baca Input JSON
     $input = json_decode(file_get_contents('php://input'), true);
     
     if (!$input) {
@@ -31,69 +47,109 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             exit;
         }
 
-        $success = 0;
+        $inserted = 0;
+        $updated = 0; 
         $fail = 0;
         $errors = [];
 
         try {
-            // Query Insert/Update
-            // UPDATE: ICCID dan IMSI sekarang opsional di database
-            // Pastikan kolom iccid di database membolehkan NULL atau kosong jika belum
-            $sql = "INSERT INTO sims (company_id, msisdn, imsi, iccid, sn, invoice_number, total_flow, custom_project, created_at) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW()) 
-                    ON DUPLICATE KEY UPDATE 
-                    imsi=VALUES(imsi), iccid=VALUES(iccid), sn=VALUES(sn), invoice_number=VALUES(invoice_number), 
-                    total_flow=VALUES(total_flow), custom_project=VALUES(custom_project), company_id=VALUES(company_id)";
+            // Persiapkan Statement untuk Cek, Update, dan Insert
+            $stmt_check = $conn->prepare("SELECT imsi, iccid, sn, invoice_number, total_flow, custom_project, batch, card_type, expired_date FROM sims WHERE msisdn = ? LIMIT 1");
             
-            $stmt = $conn->prepare($sql);
+            $stmt_update = $conn->prepare("UPDATE sims SET company_id=?, imsi=?, iccid=?, sn=?, invoice_number=?, total_flow=?, custom_project=?, batch=?, card_type=?, expired_date=? WHERE msisdn=?");
+            
+            $stmt_insert = $conn->prepare("INSERT INTO sims (company_id, msisdn, imsi, iccid, sn, invoice_number, total_flow, custom_project, batch, card_type, expired_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
 
-            if (!$stmt) {
+            if (!$stmt_check || !$stmt_update || !$stmt_insert) {
                 throw new Exception("Database Prepare Error: " . $conn->error);
             }
 
             foreach ($data as $row) {
-                // Data sudah dinormalisasi (UPPERCASE KEY) di JS
-                $msisdn  = $row['MSISDN'] ?? null;
-                // Field Opsional
-                $imsi    = $row['IMSI'] ?? '';  // Default empty string
-                $iccid   = $row['ICCID'] ?? ''; // Default empty string
-                $sn      = $row['SN'] ?? null;
-                $invoice = $row['INVOICE NO'] ?? null;
-                $project = $row['PROJECT'] ?? null;
-                
-                // Bersihkan format angka
-                $quotaRaw = preg_replace('/[^0-9.]/', '', $row['DATAPACKAGE'] ?? '0');
-                $quotaMB = floatval($quotaRaw);
-                $totalFlowBytes = $quotaMB * 1024 * 1024; // Convert MB to Bytes
+                $msisdn  = !empty($row['MSISDN']) ? (string)$row['MSISDN'] : null;
+                if (!$msisdn) {
+                    $fail++;
+                    if (count($errors) < 5) $errors[] = "Row skipped: MSISDN is missing.";
+                    continue;
+                }
 
-                // VALIDASI BARU: HANYA MSISDN YANG WAJIB
-                if ($msisdn) {
-                    // Tipe data: i=int, s=string, d=double
-                    // Urutan: company_id(i), msisdn(s), imsi(s), iccid(s), sn(s), invoice(s), total_flow(d), project(s)
-                    $stmt->bind_param("isssssds", $company_id, $msisdn, $imsi, $iccid, $sn, $invoice, $totalFlowBytes, $project);
+                $card_type   = !empty($row['CARD TYPE']) ? (string)$row['CARD TYPE'] : null;
+                $imsi        = !empty($row['IMSI']) ? (string)$row['IMSI'] : null;  
+                $iccid       = !empty($row['ICCID']) ? (string)$row['ICCID'] : null; 
+                $sn          = !empty($row['SN']) ? (string)$row['SN'] : null;
+                $invoice     = !empty($row['INVOICE NO']) ? (string)$row['INVOICE NO'] : null;
+                $project     = !empty($row['PROJECT']) ? (string)$row['PROJECT'] : null;
+                $batch       = !empty($row['BATCH']) ? (string)$row['BATCH'] : null; 
+                $expired_raw = !empty($row['EXPIRED DATE']) ? $row['EXPIRED DATE'] : null;
+                
+                $expired_date = excelDateToMySQL($expired_raw);
+                
+                $quotaRaw = preg_replace('/[^0-9.]/', '', $row['DATAPACKAGE'] ?? '');
+                $totalFlowBytes = null;
+                if ($quotaRaw !== '') {
+                    $quotaMB = floatval($quotaRaw);
+                    $totalFlowBytes = $quotaMB * 1024 * 1024; 
+                }
+
+                // Cek DB apakah MSISDN sudah ada
+                $stmt_check->bind_param("s", $msisdn);
+                $stmt_check->execute();
+                $res = $stmt_check->get_result();
+
+                if ($res->num_rows > 0) {
+                    // DATA ADA -> LAKUKAN UPDATE (SMART MERGE)
+                    // Jika data di Excel kosong, gunakan data lama yang ada di DB. Jika di Excel diisi, timpa data lama.
+                    $existing = $res->fetch_assoc();
                     
-                    if ($stmt->execute()) {
-                        $success++;
+                    $upd_company   = $company_id;
+                    $upd_imsi      = $imsi !== null ? $imsi : $existing['imsi'];
+                    $upd_iccid     = $iccid !== null ? $iccid : $existing['iccid'];
+                    $upd_sn        = $sn !== null ? $sn : $existing['sn'];
+                    $upd_invoice   = $invoice !== null ? $invoice : $existing['invoice_number'];
+                    $upd_project   = $project !== null ? $project : $existing['custom_project'];
+                    $upd_batch     = $batch !== null ? $batch : $existing['batch'];
+                    $upd_card_type = $card_type !== null ? $card_type : $existing['card_type'];
+                    $upd_expired   = $expired_date !== null ? $expired_date : $existing['expired_date'];
+                    $upd_flow      = $totalFlowBytes !== null ? $totalFlowBytes : $existing['total_flow'];
+
+                    $stmt_update->bind_param("isssssdssss", $upd_company, $upd_imsi, $upd_iccid, $upd_sn, $upd_invoice, $upd_flow, $upd_project, $upd_batch, $upd_card_type, $upd_expired, $msisdn);
+                    
+                    if ($stmt_update->execute()) {
+                        $updated++;
                     } else {
                         $fail++;
-                        // Simpan error sampling untuk debug
-                        if (count($errors) < 3) $errors[] = "Error Row ($msisdn): " . $stmt->error;
+                        if (count($errors) < 5) $errors[] = "Update failed ($msisdn): " . $stmt_update->error;
                     }
+
                 } else {
-                    $fail++; // Gagal jika MSISDN kosong
+                    // DATA TIDAK ADA -> LAKUKAN INSERT BARU
+                    if (!$card_type) {
+                        $fail++;
+                        if (count($errors) < 5) $errors[] = "Insert skipped ($msisdn): CARD TYPE is strictly required for new SIM.";
+                        continue;
+                    }
+
+                    $ins_flow = $totalFlowBytes !== null ? $totalFlowBytes : 0;
+                    $stmt_insert->bind_param("isssssdssss", $company_id, $msisdn, $imsi, $iccid, $sn, $invoice, $ins_flow, $project, $batch, $card_type, $expired_date);
+                    
+                    if ($stmt_insert->execute()) {
+                        $inserted++;
+                    } else {
+                        $fail++;
+                        if (count($errors) < 5) $errors[] = "Insert failed ($msisdn): " . $stmt_insert->error;
+                    }
                 }
             }
             
             echo json_encode([
                 'status' => 'success', 
                 'processed' => count($data), 
-                'success' => $success, 
+                'inserted' => $inserted, 
+                'updated' => $updated,
                 'fail' => $fail,
                 'debug_errors' => $errors
             ]);
 
         } catch (Exception $e) {
-            // Tangkap Fatal Error MySQL (seperti Unknown Column) agar tidak merusak UI
             echo json_encode([
                 'status' => 'error',
                 'message' => 'Critical Error: ' . $e->getMessage()
@@ -110,13 +166,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         
         try {
             $stmt = $conn->prepare("UPDATE sims SET used_flow = ? WHERE msisdn = ?");
-            
-            if (!$stmt) {
-                throw new Exception("Database Prepare Error: " . $conn->error);
-            }
+            if (!$stmt) throw new Exception("Database Prepare Error: " . $conn->error);
 
             foreach ($data as $row) {
-                $msisdn = $row['MSISDN'] ?? null;
+                $msisdn = !empty($row['MSISDN']) ? (string)$row['MSISDN'] : null;
                 $usageRaw = preg_replace('/[^0-9.]/', '', $row['USAGE'] ?? '0');
                 $usageMB = floatval($usageRaw);
                 $usageBytes = $usageMB * 1024 * 1024; 
@@ -190,14 +243,14 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                         </div>
                         Batch Upload Center
                     </h2>
-                    <p class="text-sm text-slate-500 mt-1 ml-12">Import SIM data or update usage usage efficiently using Excel files.</p>
+                    <p class="text-sm text-slate-500 mt-1 ml-12">Import SIM data or update usage efficiently using Excel files.</p>
                 </div>
 
                 <div class="mb-6 border-b border-slate-200 dark:border-slate-700 animate-slide-up" style="animation-delay: 0.1s;">
                     <ul class="flex flex-wrap -mb-px text-sm font-medium text-center" id="uploadTabs">
                         <li class="mr-2">
                             <button onclick="switchTab('sim-upload')" id="tab-sim-upload" class="inline-flex items-center gap-2 p-4 border-b-2 border-primary text-primary active dark:text-indigo-400 dark:border-indigo-400 transition-colors">
-                                <i class="ph ph-sim-card text-lg"></i> Register New SIMs
+                                <i class="ph ph-sim-card text-lg"></i> Register New / Update
                             </button>
                         </li>
                         <li class="mr-2">
@@ -260,9 +313,12 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                                 <div class="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2.5 mb-4 overflow-hidden">
                                     <div id="barSim" class="bg-primary h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
                                 </div>
-                                <div class="grid grid-cols-2 gap-4 text-center">
-                                    <div class="p-3 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-100 text-green-700 font-bold">
-                                        <span id="successCountSim" class="text-xl block">0</span> Success
+                                <div class="grid grid-cols-3 gap-3 text-center">
+                                    <div class="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 text-emerald-700 font-bold">
+                                        <span id="successCountSim" class="text-xl block">0</span> New Inserted
+                                    </div>
+                                    <div class="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-100 text-amber-700 font-bold">
+                                        <span id="duplicateCountSim" class="text-xl block">0</span> Updated (Existing)
                                     </div>
                                     <div class="p-3 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-100 text-red-700 font-bold">
                                         <span id="failCountSim" class="text-xl block">0</span> Failed
@@ -282,15 +338,18 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                             <div class="bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-2xl p-6 text-white shadow-xl">
                                 <h3 class="font-bold text-lg mb-4">Required Columns</h3>
                                 <ul class="space-y-3 text-sm text-indigo-100">
-                                    <li>• MSISDN (Required)</li>
+                                    <li><span class="font-bold text-white">• MSISDN</span> (Required)</li>
                                     <li>• IMSI (Optional)</li>
                                     <li>• ICCID (Optional)</li>
                                     <li>• SN (Optional)</li>
                                     <li>• INVOICE NO (Text)</li>
                                     <li>• DATAPACKAGE (Num in MB)</li>
                                     <li>• PROJECT (Optional)</li>
+                                    <li>• BATCH (Optional)</li>
+                                    <li>• EXPIRED DATE (Optional)</li>
+                                    <li><span class="font-bold text-white">• CARD TYPE</span> (Required)</li>
                                 </ul>
-                                <button onclick="downloadTemplate('sim')" class="mt-6 w-full py-2 bg-white text-indigo-600 font-bold rounded-lg text-xs hover:bg-indigo-50">Download Template</button>
+                                <button onclick="downloadTemplate('sim')" class="mt-6 w-full py-2 bg-white text-indigo-600 font-bold rounded-lg text-xs hover:bg-indigo-50 transition-colors shadow-sm">Download Template</button>
                             </div>
                         </div>
                     </div>
@@ -341,10 +400,10 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                             <div class="bg-gradient-to-br from-emerald-600 to-emerald-800 rounded-2xl p-6 text-white shadow-xl">
                                 <h3 class="font-bold text-lg mb-4">Required Columns</h3>
                                 <ul class="space-y-3 text-sm text-emerald-100">
-                                    <li>• MSISDN (Required)</li>
+                                    <li><span class="font-bold text-white">• MSISDN</span> (Required)</li>
                                     <li>• USAGE (MB)</li>
                                 </ul>
-                                <button onclick="downloadTemplate('usage')" class="mt-6 w-full py-2 bg-white text-emerald-700 font-bold rounded-lg text-xs hover:bg-emerald-50">Download Template</button>
+                                <button onclick="downloadTemplate('usage')" class="mt-6 w-full py-2 bg-white text-emerald-700 font-bold rounded-lg text-xs hover:bg-emerald-50 transition-colors shadow-sm">Download Template</button>
                             </div>
                         </div>
                     </div>
@@ -396,7 +455,7 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                 const data = new Uint8Array(e.target.result);
                 const workbook = XLSX.read(data, { type: 'array' });
                 const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                let jsonData = XLSX.utils.sheet_to_json(firstSheet);
+                let jsonData = XLSX.utils.sheet_to_json(firstSheet, { raw: false, dateNF: 'yyyy-mm-dd' });
 
                 jsonData = jsonData.map(normalizeKeys);
 
@@ -405,11 +464,9 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                     return;
                 }
 
-                // Check Mandatory Columns
                 let missing = [];
                 if (type === 'sim') {
-                    // UDPATE: HANYA MSISDN YANG WAJIB
-                    const req = ['MSISDN'];
+                    const req = ['MSISDN', 'CARD TYPE'];
                     const keys = Object.keys(jsonData[0]);
                     missing = req.filter(col => !keys.includes(col));
                     simData = jsonData;
@@ -421,7 +478,7 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                 }
 
                 if (missing.length > 0) {
-                    alert("Missing columns: " + missing.join(", "));
+                    alert("Missing mandatory columns: " + missing.join(", "));
                     input.value = ""; 
                     return;
                 }
@@ -448,7 +505,7 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                 data.forEach(row => {
                     let tr = "<tr class='hover:bg-slate-50 dark:hover:bg-slate-800/50'>";
                     Object.values(row).forEach(val => {
-                        tr += `<td class="px-4 py-2 border-b dark:border-slate-700 text-slate-600 dark:text-slate-300">${val}</td>`;
+                        tr += `<td class="px-4 py-2 border-b dark:border-slate-700 text-slate-600 dark:text-slate-300 truncate max-w-[150px]">${val}</td>`;
                     });
                     tr += "</tr>";
                     tbody.innerHTML += tr;
@@ -470,8 +527,8 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
             
             document.getElementById('progressAreaSim').classList.remove('hidden');
             
-            // Reset
-            let totalSuccess = 0;
+            let totalInserted = 0;
+            let totalUpdated = 0;
             let totalFail = 0;
             let processed = 0;
             const batchSize = 50; 
@@ -498,8 +555,10 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                         document.getElementById('errorLogSim').classList.remove('hidden');
                         document.getElementById('errorMsgSim').innerText = result.message;
                     } else {
-                        totalSuccess += result.success;
-                        totalFail += result.fail;
+                        totalInserted += result.inserted || 0;
+                        totalUpdated += result.updated || 0;
+                        totalFail += result.fail || 0;
+                        
                         if(result.debug_errors && result.debug_errors.length > 0) {
                              document.getElementById('errorLogSim').classList.remove('hidden');
                              document.getElementById('errorMsgSim').innerText = result.debug_errors[0];
@@ -515,7 +574,8 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                 
                 document.getElementById('barSim').style.width = percent + '%';
                 document.getElementById('percentSim').innerText = percent + '%';
-                document.getElementById('successCountSim').innerText = totalSuccess;
+                document.getElementById('successCountSim').innerText = totalInserted;
+                document.getElementById('duplicateCountSim').innerText = totalUpdated;
                 document.getElementById('failCountSim').innerText = totalFail;
             }
 
@@ -561,8 +621,7 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
         function downloadTemplate(type) {
             const wb = XLSX.utils.book_new();
             let data = [];
-            // UPDATE TEMPLATE DEFAULT: HANYA MSISDN WAJIB
-            if (type === 'sim') data = [[ "MSISDN", "IMSI", "ICCID", "SN", "INVOICE NO", "DATAPACKAGE", "PROJECT" ]];
+            if (type === 'sim') data = [[ "MSISDN", "IMSI", "ICCID", "SN", "INVOICE NO", "DATAPACKAGE", "PROJECT", "BATCH", "EXPIRED DATE", "CARD TYPE" ]];
             else data = [[ "MSISDN", "USAGE" ]];
             const ws = XLSX.utils.aoa_to_sheet(data);
             XLSX.utils.book_append_sheet(wb, ws, "Template");
