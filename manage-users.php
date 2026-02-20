@@ -85,9 +85,9 @@ function generateRandomPassword($length = 10) {
     return substr(str_shuffle("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%"), 0, $length);
 }
 
-// Helper baru untuk membuat User Code (Format: USR-xxxx)
+// Helper baru untuk membuat User Code (Format: LFID-xxxx)
 function generateUserCode() {
-    return 'USR-' . strtoupper(substr(md5(uniqid(rand(), true)), 0, 6));
+    return 'LFID-' . strtoupper(substr(md5(uniqid(rand(), true)), 0, 6));
 }
 
 function getModernEmailBody($title, $subtitle, $contentBlocks, $actionBtn = null) {
@@ -180,7 +180,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 else {
                     $plain_pass = generateRandomPassword();
                     $hash_pass = password_hash($plain_pass, PASSWORD_DEFAULT);
-                    $user_code = generateUserCode(); // Generate Code Baru
+                    $user_code = generateUserCode(); // Generate Code Baru LFID-xxxx
                     
                     if (!$is_admin) $is_global = 0;
 
@@ -272,7 +272,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 }
 
 // --- FETCH USERS ---
-// Tambahkan user_code ke dalam SELECT query
 $sql = "SELECT u.*, GROUP_CONCAT(c.id) as assigned_ids, GROUP_CONCAT(c.company_name SEPARATOR ', ') as assigned_names 
         FROM users u 
         LEFT JOIN user_company_access uca ON u.id = uca.user_id 
@@ -384,7 +383,7 @@ $total_users = $users->num_rows;
                             <thead class="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase text-[11px] tracking-wider border-b border-slate-200 dark:border-slate-700">
                                 <tr>
                                     <th class="px-6 py-4">User</th>
-                                    <th class="px-6 py-4">Role</th>
+                                    <th class="px-6 py-4">User Code</th> <th class="px-6 py-4">Role</th>
                                     <th class="px-6 py-4">Access Scope</th>
                                     <th class="px-6 py-4">Contact</th>
                                     <th class="px-6 py-4 text-center">Actions</th>
@@ -415,16 +414,20 @@ $total_users = $users->num_rows;
                                         <div class="flex items-center gap-3">
                                             <div class="w-10 h-10 rounded-full bg-indigo-50 text-primary flex items-center justify-center font-bold text-xs ring-1 ring-indigo-100"><?= $initial ?></div>
                                             <div>
-                                                <div class="flex items-center gap-2">
-                                                    <p class="font-bold text-slate-900 dark:text-white user-name"><?= htmlspecialchars($u['username']) ?></p>
-                                                    <?php if(!empty($u['user_code'])): ?>
-                                                        <span class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-slate-100 text-slate-500 border border-slate-200"><?= $u['user_code'] ?></span>
-                                                    <?php endif; ?>
-                                                </div>
+                                                <p class="font-bold text-slate-900 dark:text-white user-name"><?= htmlspecialchars($u['username']) ?></p>
                                                 <p class="text-xs text-slate-400 user-email"><?= htmlspecialchars($u['email']) ?></p>
                                             </div>
                                         </div>
                                     </td>
+                                    
+                                    <td class="px-6 py-4">
+                                        <?php if(!empty($u['user_code'])): ?>
+                                            <span class="inline-block px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"><?= $u['user_code'] ?></span>
+                                        <?php else: ?>
+                                            <span class="text-xs text-slate-400 italic">-</span>
+                                        <?php endif; ?>
+                                    </td>
+
                                     <td class="px-6 py-4">
                                         <span class="inline-flex items-center px-2.5 py-0.5 rounded text-[10px] font-bold border <?= $roleBadge ?>"><?= ucfirst($u['role']) ?></span>
                                     </td>
@@ -462,7 +465,7 @@ $total_users = $users->num_rows;
                                     </td>
                                 </tr>
                                 <?php endwhile; else: ?>
-                                <tr><td colspan="5" class="p-8 text-center text-slate-400 italic">No users found in your scope.</td></tr>
+                                <tr><td colspan="6" class="p-8 text-center text-slate-400 italic">No users found in your scope.</td></tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
@@ -484,7 +487,7 @@ $total_users = $users->num_rows;
                         
                         <div class="px-6 py-5 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
                             <h3 class="text-lg font-bold text-slate-900 dark:text-white" id="modalTitle">Add New User</h3>
-                            <p class="text-xs text-slate-500 mt-1">Credentials will be emailed. Code generated automatically.</p>
+                            <p class="text-xs text-slate-500 mt-1">Credentials will be emailed. LFID Code generated automatically.</p>
                         </div>
                         
                         <div class="p-6 space-y-5">
@@ -633,7 +636,7 @@ $total_users = $users->num_rows;
 
     <script src="assets/js/main.js"></script>
     <script>
-        // --- ANIMASI MODAL (DARI v2 - LEBIH STABIL) ---
+        // --- ANIMASI MODAL ---
         function animateModal(modalId, show) {
             const modal = document.getElementById(modalId);
             const backdrop = modal.querySelector('div[id$="Backdrop"]') || modal.querySelector('.backdrop-blur-sm');
@@ -711,7 +714,6 @@ $total_users = $users->num_rows;
 
         function closeModal(id) { animateModal(id, false); }
 
-        // --- FUNGSI DELETE & RESET (DARI v2) ---
         function confirmDelete(id, name) { 
             document.getElementById('deleteId').value = id; 
             document.getElementById('delUserName').innerText = name; 
