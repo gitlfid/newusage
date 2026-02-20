@@ -8,34 +8,28 @@ enforcePermission('sim_upload');
 function excelDateToMySQL($excelDate) {
     if (empty($excelDate)) return null;
     
-    // Jika data berupa format string YYYY-MM-DD langsung
     if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $excelDate)) {
         return $excelDate;
     }
-    // Jika data berupa nomor seri (default dari Excel)
     if (is_numeric($excelDate)) {
         $unix_date = ($excelDate - 25569) * 86400;
         return gmdate("Y-m-d", $unix_date);
     }
-    // Jika format string lain yang bisa dibaca strtotime
     $time = strtotime($excelDate);
     if ($time !== false) {
         return date('Y-m-d', $time);
     }
-    
-    return null; // Return null jika format tidak dikenali
+    return null; 
 }
 
 // --- PHP BACKEND HANDLER ---
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     
-    // Config untuk upload besar
     ini_set('display_errors', 0); 
     ini_set('memory_limit', '512M');
     set_time_limit(300);
     header('Content-Type: application/json');
     
-    // Baca Input JSON
     $input = json_decode(file_get_contents('php://input'), true);
     
     if (!$input) {
@@ -54,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
 
         $inserted = 0;
-        $updated = 0; // Untuk melacak duplikat
+        $updated = 0; 
         $fail = 0;
         $errors = [];
 
@@ -73,11 +67,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
 
             foreach ($data as $row) {
-                // MSISDN dan CARD TYPE (Wajib)
+                // MSISDN dan CARD TYPE (Wajib) - Jika kosong, row dilewati
                 $msisdn  = !empty($row['MSISDN']) ? (string)$row['MSISDN'] : null;
                 $card_type = !empty($row['CARD TYPE']) ? (string)$row['CARD TYPE'] : null;
                 
-                // Field Opsional (Ubah menjadi NULL jika kosong agar tidak bentrok Unique Key)
+                // Field Opsional (Akan diset NULL jika di Excel kosong, mencegah bentrok duplikat)
                 $imsi    = !empty($row['IMSI']) ? (string)$row['IMSI'] : null;  
                 $iccid   = !empty($row['ICCID']) ? (string)$row['ICCID'] : null; 
                 $sn      = !empty($row['SN']) ? (string)$row['SN'] : null;
@@ -96,12 +90,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $stmt->bind_param("isssssdssss", $company_id, $msisdn, $imsi, $iccid, $sn, $invoice, $totalFlowBytes, $project, $batch, $card_type, $expired_date);
                     
                     if ($stmt->execute()) {
-                        // Jika insert baru, affected_rows = 1. Jika update (Duplikat), affected_rows = 2. 
-                        // Jika update tapi data sama persis, affected_rows = 0.
                         if ($stmt->affected_rows == 1) {
-                            $inserted++;
+                            $inserted++; // Data Baru
                         } else {
-                            $updated++;
+                            $updated++;  // Data Duplikat yang diperbarui
                         }
                     } else {
                         $fail++;
@@ -428,7 +420,6 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                 const data = new Uint8Array(e.target.result);
                 const workbook = XLSX.read(data, { type: 'array' });
                 const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                // Raw = false untuk mengambil string tanggal apa adanya dari Excel jika format string
                 let jsonData = XLSX.utils.sheet_to_json(firstSheet, { raw: false, dateNF: 'yyyy-mm-dd' });
 
                 jsonData = jsonData.map(normalizeKeys);
