@@ -120,6 +120,7 @@ $s_keyword = $_GET['search'] ?? '';
 $f_company = $_GET['company'] ?? '';
 $f_project = $_GET['project'] ?? '';
 $f_invoice = $_GET['invoice'] ?? '';
+$f_batch   = $_GET['batch'] ?? ''; // FILTER BATCH BARU
 $f_level   = $_GET['level'] ?? '';
 
 $where = "WHERE 1=1 " . $company_condition;
@@ -144,6 +145,11 @@ if ($f_company) {
 if ($f_invoice) {
     $safeInv = $conn->real_escape_string($f_invoice);
     $where .= " AND sims.invoice_number = '$safeInv'";
+}
+// KONDISI FILTER BATCH BARU
+if ($f_batch) {
+    $safeBatch = $conn->real_escape_string($f_batch);
+    $where .= " AND sims.batch = '$safeBatch'";
 }
 if ($f_level) {
     $where .= " AND companies.level = '$f_level'";
@@ -171,6 +177,7 @@ $projArr = [];
 $pQ = $conn->query("SELECT DISTINCT IFNULL(custom_project, project_name) as p_name FROM sims LEFT JOIN companies ON sims.company_id = companies.id $where HAVING p_name IS NOT NULL AND p_name != '' ORDER BY p_name");
 while($r = $pQ->fetch_assoc()) $projArr[] = $r['p_name'];
 
+// FETCH INVOICE
 $invoiceArr = [];
 $invSql = "SELECT DISTINCT invoice_number FROM sims LEFT JOIN companies ON sims.company_id = companies.id WHERE invoice_number IS NOT NULL AND invoice_number != '' " . $company_condition;
 if ($f_company) {
@@ -180,6 +187,17 @@ if ($f_company) {
 $invSql .= " ORDER BY invoice_number DESC";
 $iQ = $conn->query($invSql);
 while($r = $iQ->fetch_assoc()) $invoiceArr[] = $r['invoice_number'];
+
+// FETCH BATCH BARU
+$batchArr = [];
+$bSql = "SELECT DISTINCT batch FROM sims LEFT JOIN companies ON sims.company_id = companies.id WHERE batch IS NOT NULL AND batch != '' " . $company_condition;
+if ($f_company) {
+    $safeCompFilter = $conn->real_escape_string($f_company);
+    $bSql .= " AND sims.company_id = '$safeCompFilter'";
+}
+$bSql .= " ORDER BY batch DESC";
+$bQ = $conn->query($bSql);
+while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
 ?>
 
 <!DOCTYPE html>
@@ -281,10 +299,10 @@ while($r = $iQ->fetch_assoc()) $invoiceArr[] = $r['invoice_number'];
                 </div>
 
                 <div class="relative z-10 bg-white dark:bg-darkcard p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 mb-6 animate-fade-in-up" style="animation-delay: 0.1s;">
-                    <form method="GET" id="filterForm" class="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
+                    <form method="GET" id="filterForm" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-12 gap-3 items-end">
                         <input type="hidden" name="size" value="<?= $pageSize ?>">
                         
-                        <div class="lg:col-span-3">
+                        <div class="xl:col-span-2 lg:col-span-1">
                             <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Search (Multiple)</label>
                             <div class="relative group">
                                 <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors"></i>
@@ -292,7 +310,7 @@ while($r = $iQ->fetch_assoc()) $invoiceArr[] = $r['invoice_number'];
                             </div>
                         </div>
 
-                        <div class="lg:col-span-2">
+                        <div class="xl:col-span-2 lg:col-span-1">
                             <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Company</label>
                             <select name="company" onchange="this.form.submit()" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
                                 <option value="">All Companies</option>
@@ -302,7 +320,17 @@ while($r = $iQ->fetch_assoc()) $invoiceArr[] = $r['invoice_number'];
                             </select>
                         </div>
                         
-                        <div class="lg:col-span-2">
+                        <div class="xl:col-span-2 lg:col-span-1">
+                            <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Batch</label>
+                            <select name="batch" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
+                                <option value="">All Batches</option>
+                                <?php foreach($batchArr as $b): ?>
+                                    <option value="<?= htmlspecialchars($b) ?>" <?= $f_batch === $b ? 'selected' : '' ?>><?= htmlspecialchars($b) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="xl:col-span-2 lg:col-span-1">
                             <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Invoice No</label>
                             <select name="invoice" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
                                 <option value="">All Invoices</option>
@@ -312,7 +340,7 @@ while($r = $iQ->fetch_assoc()) $invoiceArr[] = $r['invoice_number'];
                             </select>
                         </div>
 
-                        <div class="lg:col-span-2">
+                        <div class="xl:col-span-2 lg:col-span-1">
                             <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Level</label>
                             <div class="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1 border border-slate-200 dark:border-slate-700 h-[42px]">
                                 <?php foreach(['' => 'All', '1'=>'L1', '2'=>'L2', '3'=>'L3'] as $val => $lbl): 
@@ -326,8 +354,7 @@ while($r = $iQ->fetch_assoc()) $invoiceArr[] = $r['invoice_number'];
                             </div>
                         </div>
 
-                        <div class="lg:col-span-3 flex items-center justify-end gap-2">
-                            
+                        <div class="xl:col-span-2 lg:col-span-1 flex items-center justify-end gap-2">
                             <div class="relative group">
                                 <button type="button" onclick="document.getElementById('colManager').classList.toggle('hidden')" class="h-[42px] px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 shadow-sm transition-colors flex items-center gap-2">
                                     <i class="ph ph-columns text-lg"></i> Cols
@@ -369,7 +396,7 @@ while($r = $iQ->fetch_assoc()) $invoiceArr[] = $r['invoice_number'];
                                     <th data-col="msisdn" class="px-4 py-4">MSISDN</th>
                                     <th data-col="customer" class="px-4 py-4">Customer</th>
                                     <th data-col="level" class="px-4 py-4 text-center">Level</th>
-                                    <th data-col="invoice" class="px-4 py-4">Invoice No</th>
+                                    <th data-col="batch" class="px-4 py-4">Batch</th> <th data-col="invoice" class="px-4 py-4">Invoice No</th>
                                     <th data-col="project" class="px-4 py-4">Project</th>
                                     <th data-col="imsi" class="px-4 py-4">IMSI</th>
                                     <th data-col="iccid" class="px-4 py-4">ICCID</th>
@@ -422,6 +449,15 @@ while($r = $iQ->fetch_assoc()) $invoiceArr[] = $r['invoice_number'];
                                     <td data-col="level" class="px-4 py-3 text-center">
                                         <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600">L<?= $row['level'] ?? '1' ?></span>
                                     </td>
+                                    
+                                    <td data-col="batch" class="px-4 py-3 text-slate-500 dark:text-slate-400">
+                                        <?php if(!empty($row['batch'])): ?>
+                                            <span class="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded font-mono text-[10px] font-medium border border-slate-200 dark:border-slate-700"><?= htmlspecialchars($row['batch']) ?></span>
+                                        <?php else: ?>
+                                            -
+                                        <?php endif; ?>
+                                    </td>
+
                                     <td data-col="invoice" class="px-4 py-3 text-slate-500 dark:text-slate-400"><?= $row['invoice_number'] ?? '-' ?></td>
                                     <td data-col="project" class="px-4 py-3">
                                         <div class="flex items-center gap-1.5 max-w-[140px]">
@@ -452,7 +488,7 @@ while($r = $iQ->fetch_assoc()) $invoiceArr[] = $r['invoice_number'];
                                     </td>
                                 </tr>
                                 <?php endwhile; else: ?>
-                                <tr><td colspan="13" class="py-12 text-center text-slate-500">No SIM cards found matching your filters.</td></tr>
+                                <tr><td colspan="14" class="py-12 text-center text-slate-500">No SIM cards found matching your filters.</td></tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
@@ -614,13 +650,15 @@ while($r = $iQ->fetch_assoc()) $invoiceArr[] = $r['invoice_number'];
         }
 
         // --- 2. COLUMN LOGIC ---
-        const CONFIG_KEY = 'simTableConfig_V8'; 
+        // UPDATE: V9 untuk merefresh localstorage cache karena ada penambahan kolom Batch
+        const CONFIG_KEY = 'simTableConfig_V9'; 
         const defaultConfig = [
             { id: 'checkbox', name: '', width: 50, frozen: true, visible: true },
             { id: 'tags', name: 'Tags', width: 120, frozen: true, visible: true },
             { id: 'msisdn', name: 'MSISDN', width: 150, frozen: true, visible: true },
             { id: 'customer', name: 'Customer', width: 200, frozen: true, visible: true },
             { id: 'level', name: 'Level', width: 80, frozen: false, visible: true },
+            { id: 'batch', name: 'Batch', width: 120, frozen: false, visible: true }, // KOLOM BATCH BARU DIDAFTARKAN
             { id: 'invoice', name: 'Invoice No', width: 120, frozen: false, visible: true },
             { id: 'project', name: 'Project', width: 140, frozen: false, visible: true },
             { id: 'imsi', name: 'IMSI', width: 140, frozen: false, visible: true },
