@@ -1,5 +1,6 @@
 <?php 
 include 'config.php';
+require_once 'config-api.php'; // <-- MEMANGGIL PUSAT API DISINI
 checkLogin();
 
 enforcePermission('sim_list');
@@ -21,82 +22,6 @@ if (!function_exists('getRealtimeStatusBadge')) {
         if ($status == '2') return '<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Active</span>';
         return '<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400 border border-slate-200 dark:border-slate-600"><span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>Inactive</span>';
     }
-}
-
-// --- API INDOSAT FUNCTIONS ---
-function getIndosatToken() {
-    static $token = null;
-    if ($token !== null) return $token;
-
-    $curl = curl_init();
-    curl_setopt_array($curl, array(
-      CURLOPT_URL => 'https://myim3biz.indosatooredoo.com/api/m2m/auth/token',
-      CURLOPT_RETURNTRANSFER => true,
-      CURLOPT_TIMEOUT => 5, // Timeout agar tidak hang jika server indosat lambat
-      CURLOPT_CUSTOMREQUEST => 'POST',
-      CURLOPT_POSTFIELDS => json_encode([
-          "grant_type" => "client_credentials",
-          "client_id" => "c81d8a14-b199-493f-b127-ae2903bb0803",
-          "client_secret" => "3QhmWbxYQCUaePfoIYcXgjAXaykJMjeq5YriFOtA"
-      ]),
-      CURLOPT_HTTPHEADER => array(
-        'Content-Type: application/json',
-        'Accept: application/json'
-      ),
-    ));
-    $response = curl_exec($curl);
-    curl_close($curl);
-    $data = json_decode($response, true);
-    
-    if (isset($data['access_token'])) {
-        $token = $data['access_token'];
-        return $token;
-    }
-    return false;
-}
-
-function getIndosatBenefit($token, $msisdn) {
-    $curl = curl_init();
-    curl_setopt_array($curl, array(
-      CURLOPT_URL => 'https://myim3biz.indosatooredoo.com/api/m2m/ido-mobile/remaining-benefit',
-      CURLOPT_RETURNTRANSFER => true,
-      CURLOPT_TIMEOUT => 5,
-      CURLOPT_CUSTOMREQUEST => 'GET',
-      CURLOPT_POSTFIELDS => json_encode(["asset" => $msisdn]),
-      CURLOPT_HTTPHEADER => array(
-        'Authorization: Bearer ' . $token,
-        'Content-Type: application/json',
-        'Accept: application/json'
-      ),
-    ));
-    $response = curl_exec($curl);
-    curl_close($curl);
-    return json_decode($response, true);
-}
-
-function getIndosatTraffic($token, $msisdn) {
-    $currentMonth = date('Y-m');
-    $curl = curl_init();
-    curl_setopt_array($curl, array(
-      CURLOPT_URL => 'https://myim3biz.indosatooredoo.com/api/m2m/ido-mobile/traffic-summary',
-      CURLOPT_RETURNTRANSFER => true,
-      CURLOPT_TIMEOUT => 5,
-      CURLOPT_CUSTOMREQUEST => 'GET',
-      CURLOPT_POSTFIELDS => json_encode([
-          "group" => "ASSET",
-          "period" => "MONTHLY",
-          "range" => [$currentMonth, $currentMonth], // Dinamis mengikuti bulan berjalan
-          "asset" => $msisdn
-      ]),
-      CURLOPT_HTTPHEADER => array(
-        'Authorization: Bearer ' . $token,
-        'Content-Type: application/json',
-        'Accept: application/json'
-      ),
-    ));
-    $response = curl_exec($curl);
-    curl_close($curl);
-    return json_decode($response, true);
 }
 
 // --- 1. DATA ACCESS CONTROL ---
