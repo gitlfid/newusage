@@ -150,8 +150,8 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
             position: absolute; 
             width: 100%; 
             height: 100%;
-            top: 0; /* Penting untuk mencegah overflow ke bawah */
-            left: 0; /* Penting untuk mencegah overflow ke kanan */
+            top: 0; 
+            left: 0; 
             -webkit-backface-visibility: hidden; 
             backface-visibility: hidden;
             border-radius: 20px; 
@@ -271,15 +271,14 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
 
                                 <div class="card-face card-back border border-slate-200 dark:border-slate-700 <?= $isHalo ? 'bg-white' : 'bg-slate-100 dark:bg-slate-900' ?>">
                                     <?php if($isHalo): ?>
-                                        <div class="absolute top-4 left-5">
-                                            <p class="text-[11px] text-slate-600 font-medium">Call center <span class="bg-slate-500 text-white px-1.5 py-0.5 rounded-full font-bold text-[9px]">188</span></p>
-                                            <p class="text-[10px] text-slate-500">www.telkomsel.com/halo</p>
+                                        <div class="absolute top-5 right-5 flex flex-col items-center">
+                                            <div class="w-[140px] h-[18px] barcode-stripes opacity-70"></div>
+                                            <div class="mt-1 text-center tracking-widest font-mono text-[8px] text-slate-500 max-w-[140px] truncate">
+                                                <?= htmlspecialchars($sim['sn'] ?: 'NO-SN-DATA') ?>
+                                            </div>
                                         </div>
 
-                                        <div class="absolute top-5 right-5 w-[140px] h-[18px] barcode-stripes opacity-70"></div>
-                                        <div class="absolute top-10 right-5 w-[140px] text-center tracking-widest font-mono text-[8px] text-slate-500"><?= htmlspecialchars($sim['iccid']) ?></div>
-
-                                        <div class="absolute right-8 top-1/2 -translate-y-1/2 w-[100px] h-[60px] border-2 border-slate-200 rounded-lg flex items-center p-2 shadow-inner">
+                                        <div class="absolute right-8 top-[48%] -translate-y-1/2 w-[100px] h-[60px] border-2 border-slate-200 rounded-lg flex items-center p-2 shadow-inner">
                                             <div class="text-[8px] font-mono leading-tight text-slate-500 select-all pr-2 border-r border-slate-200 w-1/2 break-all">
                                                 <?= wordwrap(htmlspecialchars($sim['iccid']), 4, "<br>", true) ?>
                                             </div>
@@ -289,48 +288,53 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                             </div>
                                         </div>
 
-                                        <div class="absolute left-5 top-1/2 -translate-y-1/2 w-[180px] space-y-2">
-                                            <div class="bg-slate-50 border border-slate-100 p-2 rounded-lg">
-                                                <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Customer</p>
-                                                <p class="text-[11px] font-bold text-slate-800 leading-tight truncate"><?= htmlspecialchars($sim['company_name'] ?? 'Unknown Company') ?></p>
+                                        <div class="absolute left-5 top-5 bottom-5 w-[160px] flex flex-col justify-center gap-2">
+                                            <div class="bg-slate-50 border border-slate-100 p-2.5 rounded-lg shadow-sm">
+                                                <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-1">Customer</p>
+                                                <p class="text-[10px] font-bold text-slate-800 leading-snug break-words">
+                                                    <?= htmlspecialchars($sim['company_name'] ?? 'Unknown Company') ?>
+                                                </p>
                                             </div>
-                                            <div class="bg-slate-50 border border-slate-100 p-2 rounded-lg flex justify-between items-center">
-                                                <div>
-                                                    <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">MSISDN</p>
-                                                    <p class="text-xs font-mono font-bold text-slate-800"><?= htmlspecialchars($sim['msisdn']) ?></p>
-                                                </div>
-                                                <div class="text-right">
-                                                    <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Package</p>
-                                                    <p class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded dynamic-val" data-bytes="<?= $totalFlow ?>"><?= formatBytesMB($totalFlow) ?></p>
+                                            
+                                            <div class="bg-slate-50 border border-slate-100 p-2.5 rounded-lg shadow-sm flex flex-col gap-2">
+                                                <div class="flex justify-between items-start gap-2">
+                                                    <div class="min-w-0">
+                                                        <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-1">MSISDN</p>
+                                                        <p class="text-[11px] font-mono font-bold text-slate-800 truncate select-all">
+                                                            <?= htmlspecialchars($sim['msisdn']) ?>
+                                                        </p>
+                                                    </div>
+                                                    <div class="text-right flex-shrink-0">
+                                                        <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-1">Package</p>
+                                                        <p class="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 dynamic-val" data-bytes="<?= $totalFlow ?>">
+                                                            <?= formatBytesMB($totalFlow) ?>
+                                                        </p>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-
-                                        <div class="absolute bottom-3 left-5 right-5 flex justify-between items-end">
-                                            <p class="text-[7px] text-slate-400 leading-tight w-[60%]">
-                                                Dengan digunakannya kartu SIM ini, pengguna sepakat untuk tunduk kepada syarat dan ketentuan yang ditetapkan oleh Telkomsel dari waktu ke waktu.
-                                            </p>
-                                            <p class="text-[10px] font-bold text-slate-800">by Telkom Indonesia</p>
                                         </div>
 
                                     <?php else: ?>
                                         <div class="absolute inset-0 p-6 flex flex-col justify-between">
                                             <div class="flex justify-between items-start">
-                                                <div class="w-32 h-6 barcode-stripes opacity-40"></div>
-                                                <span class="text-[10px] font-mono text-slate-400 select-all"><?= htmlspecialchars($sim['iccid']) ?></span>
+                                                <div class="flex flex-col items-start">
+                                                    <div class="w-32 h-6 barcode-stripes opacity-40"></div>
+                                                    <span class="text-[10px] font-mono text-slate-400 select-all mt-1"><?= htmlspecialchars($sim['sn'] ?: 'NO-SN-DATA') ?></span>
+                                                </div>
+                                                <span class="text-[10px] font-mono text-slate-400 select-all bg-slate-200 dark:bg-slate-800 px-2 rounded"><?= htmlspecialchars($sim['iccid']) ?></span>
                                             </div>
                                             <div class="space-y-2 bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
                                                 <div>
                                                     <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Customer</p>
-                                                    <p class="text-xs font-bold text-slate-800 dark:text-white truncate"><?= htmlspecialchars($sim['company_name'] ?? 'Unknown Company') ?></p>
+                                                    <p class="text-[11px] font-bold text-slate-800 dark:text-white leading-tight break-words"><?= htmlspecialchars($sim['company_name'] ?? 'Unknown Company') ?></p>
                                                 </div>
-                                                <div class="flex justify-between">
+                                                <div class="flex justify-between items-end">
                                                     <div>
-                                                        <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider">MSISDN</p>
-                                                        <p class="text-xs font-mono font-bold text-slate-800 dark:text-white"><?= htmlspecialchars($sim['msisdn']) ?></p>
+                                                        <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">MSISDN</p>
+                                                        <p class="text-xs font-mono font-bold text-slate-800 dark:text-white select-all"><?= htmlspecialchars($sim['msisdn']) ?></p>
                                                     </div>
                                                     <div class="text-right">
-                                                        <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Package</p>
+                                                        <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Package</p>
                                                         <p class="text-xs font-bold text-primary dynamic-val" data-bytes="<?= $totalFlow ?>"><?= formatBytesMB($totalFlow) ?></p>
                                                     </div>
                                                 </div>
