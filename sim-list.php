@@ -442,7 +442,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                             <?php endif; ?>
                                         </div>
                                     </td>
-                                    <td data-col="msisdn" a href="sim-detail?id=<?= $row_id ?>" class="px-4 py-3 font-mono font-bold text-primary dark:text-indigo-400 select-all"><?= htmlspecialchars($row['msisdn'] ?? '-') ?></td>
+                                    <td data-col="msisdn" class="px-4 py-3 font-mono font-bold text-primary dark:text-indigo-400 select-all"><?= htmlspecialchars($row['msisdn'] ?? '-') ?><a href="sim-detail?id=<?= $row_id ?>"</td>
                                     <td data-col="customer" class="px-4 py-3">
                                         <div class="flex items-center gap-2">
                                             <span class="truncate font-medium text-slate-700 dark:text-slate-200 max-w-[210px]" title="<?= $companyName ?>"><?= $companyName ?></span>
