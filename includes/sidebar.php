@@ -48,7 +48,7 @@ function getIconClass($page_name, $current_page, $icon_name) {
                     <li>
                         <a href="sim-list" class="relative flex items-center gap-2.5 rounded-xl px-4 py-3 transition-all group-[.is-collapsed]:justify-center <?php echo ($current_page == 'sim-list' || $current_page == 'sim-detail') ? $active_link_style : $inactive_link_style; ?>">
                             <i class="<?php echo getIconClass('sim-list', $current_page, 'ph-sim-card'); ?>"></i>
-                            <span class="group-[.is-collapsed]:hidden whitespace-nowrap">SIM Monitor</span>
+                            <span class="group-[.is-collapsed]:hidden whitespace-nowrap">SIM List</span>
                         </a>
                     </li>
                     <?php endif; ?>
