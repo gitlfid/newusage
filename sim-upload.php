@@ -4,6 +4,28 @@ checkLogin();
 
 enforcePermission('sim_upload');
 
+// --- Helper untuk Konversi Tanggal Excel ke MySQL Format ---
+function excelDateToMySQL($excelDate) {
+    if (empty($excelDate)) return null;
+    
+    // Jika data berupa format string YYYY-MM-DD langsung
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $excelDate)) {
+        return $excelDate;
+    }
+    // Jika data berupa nomor seri (default dari Excel)
+    if (is_numeric($excelDate)) {
+        $unix_date = ($excelDate - 25569) * 86400;
+        return gmdate("Y-m-d", $unix_date);
+    }
+    // Jika format string lain yang bisa dibaca strtotime
+    $time = strtotime($excelDate);
+    if ($time !== false) {
+        return date('Y-m-d', $time);
+    }
+    
+    return null; // Return null jika format tidak dikenali
+}
+
 // --- PHP BACKEND HANDLER ---
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     
@@ -36,14 +58,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $errors = [];
 
         try {
-            // Query Insert/Update
-            // UPDATE: ICCID dan IMSI sekarang opsional di database
-            // Pastikan kolom iccid di database membolehkan NULL atau kosong jika belum
-            $sql = "INSERT INTO sims (company_id, msisdn, imsi, iccid, sn, invoice_number, total_flow, custom_project, created_at) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW()) 
+            // Query Insert/Update Diperluas
+            $sql = "INSERT INTO sims (company_id, msisdn, imsi, iccid, sn, invoice_number, total_flow, custom_project, batch, card_type, expired_date, created_at) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW()) 
                     ON DUPLICATE KEY UPDATE 
                     imsi=VALUES(imsi), iccid=VALUES(iccid), sn=VALUES(sn), invoice_number=VALUES(invoice_number), 
-                    total_flow=VALUES(total_flow), custom_project=VALUES(custom_project), company_id=VALUES(company_id)";
+                    total_flow=VALUES(total_flow), custom_project=VALUES(custom_project), company_id=VALUES(company_id),
+                    batch=VALUES(batch), card_type=VALUES(card_type), expired_date=VALUES(expired_date)";
             
             $stmt = $conn->prepare($sql);
 
@@ -54,33 +75,39 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             foreach ($data as $row) {
                 // Data sudah dinormalisasi (UPPERCASE KEY) di JS
                 $msisdn  = $row['MSISDN'] ?? null;
+                $card_type = $row['CARD TYPE'] ?? null; // Field Baru (Wajib)
+                
                 // Field Opsional
-                $imsi    = $row['IMSI'] ?? '';  // Default empty string
-                $iccid   = $row['ICCID'] ?? ''; // Default empty string
+                $imsi    = $row['IMSI'] ?? '';  
+                $iccid   = $row['ICCID'] ?? ''; 
                 $sn      = $row['SN'] ?? null;
                 $invoice = $row['INVOICE NO'] ?? null;
                 $project = $row['PROJECT'] ?? null;
+                $batch   = $row['BATCH'] ?? null; // Field Baru (Opsional)
+                $expired_raw = $row['EXPIRED DATE'] ?? null; // Field Baru (Opsional)
                 
-                // Bersihkan format angka
+                // Proses data khusus
+                $expired_date = excelDateToMySQL($expired_raw);
+                
                 $quotaRaw = preg_replace('/[^0-9.]/', '', $row['DATAPACKAGE'] ?? '0');
                 $quotaMB = floatval($quotaRaw);
-                $totalFlowBytes = $quotaMB * 1024 * 1024; // Convert MB to Bytes
+                $totalFlowBytes = $quotaMB * 1024 * 1024; 
 
-                // VALIDASI BARU: HANYA MSISDN YANG WAJIB
-                if ($msisdn) {
+                // VALIDASI: MSISDN DAN CARD TYPE WAJIB
+                if ($msisdn && $card_type) {
                     // Tipe data: i=int, s=string, d=double
-                    // Urutan: company_id(i), msisdn(s), imsi(s), iccid(s), sn(s), invoice(s), total_flow(d), project(s)
-                    $stmt->bind_param("isssssds", $company_id, $msisdn, $imsi, $iccid, $sn, $invoice, $totalFlowBytes, $project);
+                    // Urutan: company_id(i), msisdn(s), imsi(s), iccid(s), sn(s), invoice(s), total_flow(d), project(s), batch(s), card_type(s), expired_date(s)
+                    $stmt->bind_param("isssssdssss", $company_id, $msisdn, $imsi, $iccid, $sn, $invoice, $totalFlowBytes, $project, $batch, $card_type, $expired_date);
                     
                     if ($stmt->execute()) {
                         $success++;
                     } else {
                         $fail++;
-                        // Simpan error sampling untuk debug
                         if (count($errors) < 3) $errors[] = "Error Row ($msisdn): " . $stmt->error;
                     }
                 } else {
-                    $fail++; // Gagal jika MSISDN kosong
+                    $fail++; 
+                    if (count($errors) < 3) $errors[] = "Error: MSISDN and CARD TYPE are required. Row skipped.";
                 }
             }
             
@@ -93,7 +120,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             ]);
 
         } catch (Exception $e) {
-            // Tangkap Fatal Error MySQL (seperti Unknown Column) agar tidak merusak UI
             echo json_encode([
                 'status' => 'error',
                 'message' => 'Critical Error: ' . $e->getMessage()
@@ -282,15 +308,18 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                             <div class="bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-2xl p-6 text-white shadow-xl">
                                 <h3 class="font-bold text-lg mb-4">Required Columns</h3>
                                 <ul class="space-y-3 text-sm text-indigo-100">
-                                    <li>• MSISDN (Required)</li>
+                                    <li><span class="font-bold text-white">• MSISDN</span> (Required)</li>
                                     <li>• IMSI (Optional)</li>
                                     <li>• ICCID (Optional)</li>
                                     <li>• SN (Optional)</li>
                                     <li>• INVOICE NO (Text)</li>
                                     <li>• DATAPACKAGE (Num in MB)</li>
                                     <li>• PROJECT (Optional)</li>
+                                    <li>• BATCH (Optional)</li>
+                                    <li>• EXPIRED DATE (Optional)</li>
+                                    <li><span class="font-bold text-white">• CARD TYPE</span> (Required)</li>
                                 </ul>
-                                <button onclick="downloadTemplate('sim')" class="mt-6 w-full py-2 bg-white text-indigo-600 font-bold rounded-lg text-xs hover:bg-indigo-50">Download Template</button>
+                                <button onclick="downloadTemplate('sim')" class="mt-6 w-full py-2 bg-white text-indigo-600 font-bold rounded-lg text-xs hover:bg-indigo-50 transition-colors shadow-sm">Download Template</button>
                             </div>
                         </div>
                     </div>
@@ -341,10 +370,10 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                             <div class="bg-gradient-to-br from-emerald-600 to-emerald-800 rounded-2xl p-6 text-white shadow-xl">
                                 <h3 class="font-bold text-lg mb-4">Required Columns</h3>
                                 <ul class="space-y-3 text-sm text-emerald-100">
-                                    <li>• MSISDN (Required)</li>
+                                    <li><span class="font-bold text-white">• MSISDN</span> (Required)</li>
                                     <li>• USAGE (MB)</li>
                                 </ul>
-                                <button onclick="downloadTemplate('usage')" class="mt-6 w-full py-2 bg-white text-emerald-700 font-bold rounded-lg text-xs hover:bg-emerald-50">Download Template</button>
+                                <button onclick="downloadTemplate('usage')" class="mt-6 w-full py-2 bg-white text-emerald-700 font-bold rounded-lg text-xs hover:bg-emerald-50 transition-colors shadow-sm">Download Template</button>
                             </div>
                         </div>
                     </div>
@@ -408,8 +437,8 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                 // Check Mandatory Columns
                 let missing = [];
                 if (type === 'sim') {
-                    // UDPATE: HANYA MSISDN YANG WAJIB
-                    const req = ['MSISDN'];
+                    // UDPATE: MSISDN DAN CARD TYPE WAJIB
+                    const req = ['MSISDN', 'CARD TYPE'];
                     const keys = Object.keys(jsonData[0]);
                     missing = req.filter(col => !keys.includes(col));
                     simData = jsonData;
@@ -421,7 +450,7 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                 }
 
                 if (missing.length > 0) {
-                    alert("Missing columns: " + missing.join(", "));
+                    alert("Missing mandatory columns: " + missing.join(", "));
                     input.value = ""; 
                     return;
                 }
@@ -448,7 +477,7 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                 data.forEach(row => {
                     let tr = "<tr class='hover:bg-slate-50 dark:hover:bg-slate-800/50'>";
                     Object.values(row).forEach(val => {
-                        tr += `<td class="px-4 py-2 border-b dark:border-slate-700 text-slate-600 dark:text-slate-300">${val}</td>`;
+                        tr += `<td class="px-4 py-2 border-b dark:border-slate-700 text-slate-600 dark:text-slate-300 truncate max-w-[150px]">${val}</td>`;
                     });
                     tr += "</tr>";
                     tbody.innerHTML += tr;
@@ -561,8 +590,8 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
         function downloadTemplate(type) {
             const wb = XLSX.utils.book_new();
             let data = [];
-            // UPDATE TEMPLATE DEFAULT: HANYA MSISDN WAJIB
-            if (type === 'sim') data = [[ "MSISDN", "IMSI", "ICCID", "SN", "INVOICE NO", "DATAPACKAGE", "PROJECT" ]];
+            // UPDATE TEMPLATE DEFAULT DENGAN KOLOM BARU
+            if (type === 'sim') data = [[ "MSISDN", "IMSI", "ICCID", "SN", "INVOICE NO", "DATAPACKAGE", "PROJECT", "BATCH", "EXPIRED DATE", "CARD TYPE" ]];
             else data = [[ "MSISDN", "USAGE" ]];
             const ws = XLSX.utils.aoa_to_sheet(data);
             XLSX.utils.book_append_sheet(wb, ws, "Template");
