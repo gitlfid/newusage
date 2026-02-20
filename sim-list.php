@@ -322,7 +322,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                         
                         <div class="xl:col-span-2 lg:col-span-1">
                             <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Batch</label>
-                            <select name="batch" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
+                            <select name="batch" class="w-full h-[30px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
                                 <option value="">All Batches</option>
                                 <?php foreach($batchArr as $b): ?>
                                     <option value="<?= htmlspecialchars($b) ?>" <?= $f_batch === $b ? 'selected' : '' ?>><?= htmlspecialchars($b) ?></option>
