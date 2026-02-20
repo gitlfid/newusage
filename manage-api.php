@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $stmt->bind_param("isss", $target_user_id, $app_name, $access_key, $secret_key);
             
             if ($stmt->execute()) {
-                $msg = "API Key Generated Successfully for " . htmlspecialchars($uData['username']) . "!"; 
+                $msg = "API Key Generated Successfully for " . htmlspecialchars($uData['username'] ?? 'Unknown User') . "!"; 
                 $msg_type = "success";
             } else {
                 $msg = "Error generating key: " . $conn->error; 
@@ -199,7 +199,7 @@ $available_users = $conn->query($sql_users);
                         <option value="" disabled selected>-- Choose a User --</option>
                         <?php if($available_users->num_rows > 0): while($u = $available_users->fetch_assoc()): ?>
                             <option value="<?= $u['id'] ?>">
-                              [<?= htmlspecialchars($u['user_code']) ?>] <?= htmlspecialchars($u['username']) ?> - <?= htmlspecialchars($u['email']) ?>
+                              [<?= htmlspecialchars($u['user_code'] ?? 'NO-CODE') ?>] <?= htmlspecialchars($u['username'] ?? 'Unknown') ?> - <?= htmlspecialchars($u['email'] ?? '') ?>
                             </option>
                         <?php endwhile; else: ?>
                             <option value="" disabled>All users already have active keys.</option>
