@@ -80,15 +80,19 @@ foreach ($companies_indexed as $id => $node) {
 }
 $my_companies_sorted = flatUserCompanyTree($tree);
 
-// --- HELPER: PASSWORD & EMAIL (DIADOPSI DARI v2 AGAR LEBIH BAIK) ---
+// --- HELPER: PASSWORD, USER CODE & EMAIL ---
 function generateRandomPassword($length = 10) {
     return substr(str_shuffle("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%"), 0, $length);
+}
+
+// Helper baru untuk membuat User Code (Format: LFID-xxxx)
+function generateUserCode() {
+    return 'LFID-' . strtoupper(substr(md5(uniqid(rand(), true)), 0, 6));
 }
 
 function getModernEmailBody($title, $subtitle, $contentBlocks, $actionBtn = null) {
     $year = date('Y');
     $baseUrl = "https://usage.linksfield.id"; 
-    // Menggunakan Style CSS dari v2 yang lebih rapi
     return "
     <!DOCTYPE html>
     <html>
@@ -148,7 +152,7 @@ function sendSystemEmail($to, $subject, $htmlBody) {
 
 $msg = ''; $msg_type = '';
 
-// --- HANDLE POST ACTIONS (LOGIC DARI v2) ---
+// --- HANDLE POST ACTIONS ---
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     // 1. ADD / EDIT USER
@@ -176,10 +180,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 else {
                     $plain_pass = generateRandomPassword();
                     $hash_pass = password_hash($plain_pass, PASSWORD_DEFAULT);
+                    $user_code = generateUserCode(); // Generate Code Baru LFID-xxxx
+                    
                     if (!$is_admin) $is_global = 0;
 
-                    $stmt = $conn->prepare("INSERT INTO users (username, email, password, phone, role, is_global, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
-                    $stmt->bind_param("sssssi", $username, $email, $hash_pass, $phone, $target_role, $is_global);
+                    // Tambahkan user_code ke query insert
+                    $stmt = $conn->prepare("INSERT INTO users (user_code, username, email, password, phone, role, is_global, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())");
+                    $stmt->bind_param("ssssssi", $user_code, $username, $email, $hash_pass, $phone, $target_role, $is_global);
                     
                     if ($stmt->execute()) {
                         $new_uid = $conn->insert_id;
@@ -190,8 +197,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             }
                         }
                         
-                        // Email Logic from v2
-                        $contentBlocks = "<div class='info-row'><span class='label'>Username</span><div class='value'>$username</div></div>
+                        // Email Logic
+                        $contentBlocks = "<div class='info-row'><span class='label'>User Code</span><div class='value'>$user_code</div></div>
+                                          <div class='info-row'><span class='label'>Username</span><div class='value'>$username</div></div>
                                           <div class='info-row'><span class='label'>Email</span><div class='value'>$email</div></div>
                                           <div class='info-row'><span class='label'>Password</span><div class='value'>$plain_pass</div></div>
                                           <div class='info-row'><span class='label'>Role</span><div class='value'>".ucfirst($target_role)."</div></div>";
@@ -208,7 +216,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 // UPDATE
                 $can_update = $is_admin;
                 if (!$is_admin) {
-                    // Allow non-admin to update sub-users (simplified logic)
                     $can_update = true; 
                 }
 
@@ -232,7 +239,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
     }
 
-    // 2. DELETE USER (LOGIC v2 - FIXED)
+    // 2. DELETE USER
     if (isset($_POST['delete_user'])) {
         $id = $_POST['delete_id'];
         if ($id == $_SESSION['user_id']) { 
@@ -244,7 +251,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
     }
 
-    // 3. RESET PASSWORD (LOGIC v2 - FIXED)
+    // 3. RESET PASSWORD
     if (isset($_POST['reset_password'])) {
         $id = $_POST['reset_id'];
         $email = $_POST['reset_email'];
@@ -264,7 +271,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 }
 
-// --- FETCH USERS (BAWAAN v1 - DIPERTAHANKAN) ---
+// --- FETCH USERS ---
 $sql = "SELECT u.*, GROUP_CONCAT(c.id) as assigned_ids, GROUP_CONCAT(c.company_name SEPARATOR ', ') as assigned_names 
         FROM users u 
         LEFT JOIN user_company_access uca ON u.id = uca.user_id 
@@ -376,7 +383,7 @@ $total_users = $users->num_rows;
                             <thead class="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold uppercase text-[11px] tracking-wider border-b border-slate-200 dark:border-slate-700">
                                 <tr>
                                     <th class="px-6 py-4">User</th>
-                                    <th class="px-6 py-4">Role</th>
+                                    <th class="px-6 py-4">User Code</th> <th class="px-6 py-4">Role</th>
                                     <th class="px-6 py-4">Access Scope</th>
                                     <th class="px-6 py-4">Contact</th>
                                     <th class="px-6 py-4 text-center">Actions</th>
@@ -412,6 +419,15 @@ $total_users = $users->num_rows;
                                             </div>
                                         </div>
                                     </td>
+                                    
+                                    <td class="px-6 py-4">
+                                        <?php if(!empty($u['user_code'])): ?>
+                                            <span class="inline-block px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"><?= $u['user_code'] ?></span>
+                                        <?php else: ?>
+                                            <span class="text-xs text-slate-400 italic">-</span>
+                                        <?php endif; ?>
+                                    </td>
+
                                     <td class="px-6 py-4">
                                         <span class="inline-flex items-center px-2.5 py-0.5 rounded text-[10px] font-bold border <?= $roleBadge ?>"><?= ucfirst($u['role']) ?></span>
                                     </td>
@@ -440,16 +456,16 @@ $total_users = $users->num_rows;
                                         <div class="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                             <button type="button" onclick="editUser(<?= $editData ?>)" class="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all"><i class="ph ph-pencil-simple text-lg"></i></button>
                                             
-                                            <button type="button" onclick="confirmReset(<?= $u['id'] ?>, '<?= $u['email'] ?>')" class="p-2 rounded-lg text-slate-400 hover:text-amber-500 hover:bg-amber-50 transition-all"><i class="ph ph-key text-lg"></i></button>
+                                            <button type="button" onclick="confirmReset('<?= $u['id'] ?>', '<?= addslashes($u['email']) ?>')" class="p-2 rounded-lg text-slate-400 hover:text-amber-500 hover:bg-amber-50 transition-all"><i class="ph ph-key text-lg"></i></button>
                                             
                                             <?php if($u['id'] != $current_user_id): ?>
-                                            <button type="button" onclick="confirmDelete(<?= $u['id'] ?>, '<?= addslashes($u['username']) ?>')" class="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"><i class="ph ph-trash text-lg"></i></button>
+                                            <button type="button" onclick="confirmDelete('<?= $u['id'] ?>', '<?= addslashes($u['username']) ?>')" class="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"><i class="ph ph-trash text-lg"></i></button>
                                             <?php endif; ?>
                                         </div>
                                     </td>
                                 </tr>
                                 <?php endwhile; else: ?>
-                                <tr><td colspan="5" class="p-8 text-center text-slate-400 italic">No users found in your scope.</td></tr>
+                                <tr><td colspan="6" class="p-8 text-center text-slate-400 italic">No users found in your scope.</td></tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
@@ -471,7 +487,7 @@ $total_users = $users->num_rows;
                         
                         <div class="px-6 py-5 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
                             <h3 class="text-lg font-bold text-slate-900 dark:text-white" id="modalTitle">Add New User</h3>
-                            <p class="text-xs text-slate-500 mt-1">Credentials will be emailed.</p>
+                            <p class="text-xs text-slate-500 mt-1">Credentials will be emailed. LFID Code generated automatically.</p>
                         </div>
                         
                         <div class="p-6 space-y-5">
@@ -620,7 +636,7 @@ $total_users = $users->num_rows;
 
     <script src="assets/js/main.js"></script>
     <script>
-        // --- ANIMASI MODAL (DARI v2 - LEBIH STABIL) ---
+        // --- ANIMASI MODAL ---
         function animateModal(modalId, show) {
             const modal = document.getElementById(modalId);
             const backdrop = modal.querySelector('div[id$="Backdrop"]') || modal.querySelector('.backdrop-blur-sm');
@@ -698,7 +714,6 @@ $total_users = $users->num_rows;
 
         function closeModal(id) { animateModal(id, false); }
 
-        // --- FUNGSI DELETE & RESET (DARI v2) ---
         function confirmDelete(id, name) { 
             document.getElementById('deleteId').value = id; 
             document.getElementById('delUserName').innerText = name; 

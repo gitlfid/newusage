@@ -4,7 +4,7 @@ header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Headers: X-Access-Key, X-Secret-Key, Content-Type');
 
-// Load Config (Sesuaikan path config.php Anda)
+// Load Config
 require_once '../../config.php';
 
 // Helper Format Bytes
@@ -44,62 +44,99 @@ if ($api_user['status'] == 0) {
     exit;
 }
 
-// 3. Proses Parameter (MSISDN)
+// 3. Proses Parameter (MSISDN - Opsional)
 $msisdn = $_GET['msisdn'] ?? '';
 
-if (empty($msisdn)) {
-    http_response_code(400);
-    echo json_encode(['status' => 'error', 'message' => 'Bad Request: MSISDN parameter is required']);
-    exit;
-}
-
-// 4. Cek Akses User terhadap SIM tersebut
+// 4. CEK AKSES KETAT (STRICT SCOPE ACCESS)
 $user_id = $api_user['user_id'];
-$allowed_comps = getClientIdsForUser($user_id); // Gunakan fungsi existing dari config.php
+
+// Ambil info role dan is_global dari pemilik API key
+$uQ = $conn->prepare("SELECT role, is_global FROM users WHERE id = ?");
+$uQ->bind_param("i", $user_id);
+$uQ->execute();
+$uData = $uQ->get_result()->fetch_assoc();
+
 $company_condition = "";
 
-if ($allowed_comps === 'NONE') {
-    $company_condition = " AND 1=0 "; 
-} elseif (is_array($allowed_comps)) {
-    $ids_str = implode(',', $allowed_comps);
-    $company_condition = " AND company_id IN ($ids_str) ";
-} 
+// LOGIKA: Jika BUKAN Superadmin dan BUKAN Global Access, maka filter secara ketat!
+if ($uData['role'] !== 'superadmin' && $uData['is_global'] != 1) {
+    // Cari perusahaan apa saja yang di-assign ke user ini
+    $accessQ = $conn->prepare("SELECT company_id FROM user_company_access WHERE user_id = ?");
+    $accessQ->bind_param("i", $user_id);
+    $accessQ->execute();
+    $accessRes = $accessQ->get_result();
+    
+    $allowed_ids = [];
+    while($row = $accessRes->fetch_assoc()) {
+        $allowed_ids[] = $row['company_id'];
+    }
+    
+    if (empty($allowed_ids)) {
+        // Jika tidak di-assign ke customer manapun, block akses
+        $company_condition = " AND 1=0 "; 
+    } else {
+        // Gabungkan array menjadi string, contoh: "1, 2, 5"
+        $ids_str = implode(',', $allowed_ids);
+        $company_condition = " AND sims.company_id IN ($ids_str) ";
+    }
+}
 
-// 5. Query Data SIM
-$sql = "SELECT msisdn, iccid, imsi, sn, total_flow, used_flow 
+// 5. Query Data SIM Dinamis (Satu atau Semua)
+$sql = "SELECT sims.msisdn, sims.iccid, sims.imsi, sims.sn, sims.total_flow, sims.used_flow, companies.company_name 
         FROM sims 
-        WHERE msisdn = ? $company_condition LIMIT 1";
+        LEFT JOIN companies ON sims.company_id = companies.id
+        WHERE 1=1 $company_condition";
 
-$stmt = $conn->prepare($sql);
-$stmt->bind_param("s", $msisdn);
+// Jika request 1 MSISDN spesifik
+if (!empty($msisdn)) {
+    $sql .= " AND sims.msisdn = ? LIMIT 1";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("s", $msisdn);
+} else {
+    // Jika tidak ada MSISDN, tampilkan semua sesuai hak akses
+    $sql .= " ORDER BY sims.id DESC";
+    $stmt = $conn->prepare($sql);
+}
+
 $stmt->execute();
 $result = $stmt->get_result();
 
+// 6. Siapkan JSON Response
 if ($result->num_rows > 0) {
-    $sim = $result->fetch_assoc();
+    $data_array = [];
     
-    // Format response
-    $response = [
-        'status' => 'success',
-        'data' => [
+    while($sim = $result->fetch_assoc()) {
+        $data_array[] = [
+            'customer' => $sim['company_name'] ?? 'Unknown',
             'msisdn' => $sim['msisdn'],
             'iccid' => $sim['iccid'],
             'imsi' => $sim['imsi'],
             'sn' => $sim['sn'],
             'data_package' => [
-                'raw_bytes' => $sim['total_flow'],
+                'raw_bytes' => (float)$sim['total_flow'],
                 'formatted' => formatBytesAPI($sim['total_flow'])
             ],
             'usage' => [
-                'raw_bytes' => $sim['used_flow'],
+                'raw_bytes' => (float)$sim['used_flow'],
                 'formatted' => formatBytesAPI($sim['used_flow'])
             ]
-        ]
+        ];
+    }
+    
+    // Kembalikan Object jika cari 1 nomor, Kembalikan Array jika cari semua nomor
+    $response_data = (!empty($msisdn)) ? $data_array[0] : $data_array;
+
+    $response = [
+        'status' => 'success',
+        'total_data' => count($data_array),
+        'data' => $response_data
     ];
+    
     http_response_code(200);
     echo json_encode($response);
 } else {
+    // Not found (Bisa karena nomor tidak ada, ATAU nomor ada tapi punya customer lain)
     http_response_code(404);
-    echo json_encode(['status' => 'error', 'message' => 'SIM Card not found or access denied']);
+    echo json_encode(['status' => 'error', 'message' => 'No SIM Cards found or access denied due to your permission scope']);
 }
 ?>

@@ -109,7 +109,19 @@ function getIconClass($page_name, $current_page, $icon_name) {
                             <span class="group-[.is-collapsed]:hidden whitespace-nowrap">SMTP Settings</span>
                         </a>
                     </li>
+                    <li>
+                        <a href="manage-api" class="relative flex items-center gap-2.5 rounded-xl px-4 py-3 transition-all group-[.is-collapsed]:justify-center <?php echo ($current_page == 'manage-api') ? $active_link_style : $inactive_link_style; ?>">
+                            <i class="<?php echo getIconClass('manage-api', $current_page, 'ph-key'); ?>"></i>
+                            <span class="group-[.is-collapsed]:hidden whitespace-nowrap">API Management</span>
+                        </a>
+                    </li>
                     <?php endif; ?>
+                    <li>
+                        <a href="api-docs" class="relative flex items-center gap-2.5 rounded-xl px-4 py-3 transition-all group-[.is-collapsed]:justify-center <?php echo (basename($_SERVER['PHP_SELF']) == 'api-docs.php' || current(explode('.', basename($_SERVER['REQUEST_URI']))) == 'api-docs') ? 'bg-indigo-50 dark:bg-indigo-900/30 text-primary font-bold' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'; ?>">
+                            <i class="ph ph-book-open-text text-xl <?php echo (basename($_SERVER['PHP_SELF']) == 'api-docs.php' || current(explode('.', basename($_SERVER['REQUEST_URI']))) == 'api-docs') ? 'text-primary' : 'text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300'; ?>"></i>
+                            <span class="group-[.is-collapsed]:hidden whitespace-nowrap">API Documentation</span>
+                        </a>
+                    </li>
 
                 </ul>
             </div>
