@@ -62,13 +62,15 @@ if ($allowed_comps === 'NONE') {
     $company_condition = " AND 1=0 "; 
 } elseif (is_array($allowed_comps)) {
     $ids_str = implode(',', $allowed_comps);
-    $company_condition = " AND company_id IN ($ids_str) ";
+    // Diperbarui: menggunakan prefix sims. karena kita menggunakan JOIN
+    $company_condition = " AND sims.company_id IN ($ids_str) ";
 } 
 
-// 5. Query Data SIM
-$sql = "SELECT msisdn, iccid, imsi, sn, total_flow, used_flow 
+// 5. Query Data SIM (Diperbarui dengan JOIN ke tabel companies)
+$sql = "SELECT sims.msisdn, sims.iccid, sims.imsi, sims.sn, sims.total_flow, sims.used_flow, companies.company_name 
         FROM sims 
-        WHERE msisdn = ? $company_condition LIMIT 1";
+        LEFT JOIN companies ON sims.company_id = companies.id
+        WHERE sims.msisdn = ? $company_condition LIMIT 1";
 
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("s", $msisdn);
@@ -78,20 +80,21 @@ $result = $stmt->get_result();
 if ($result->num_rows > 0) {
     $sim = $result->fetch_assoc();
     
-    // Format response
+    // Format response (Diperbarui dengan penambahan field customer)
     $response = [
         'status' => 'success',
         'data' => [
+            'customer' => $sim['company_name'] ?? 'Unknown',
             'msisdn' => $sim['msisdn'],
             'iccid' => $sim['iccid'],
             'imsi' => $sim['imsi'],
             'sn' => $sim['sn'],
             'data_package' => [
-                'raw_bytes' => $sim['total_flow'],
+                'raw_bytes' => (float)$sim['total_flow'],
                 'formatted' => formatBytesAPI($sim['total_flow'])
             ],
             'usage' => [
-                'raw_bytes' => $sim['used_flow'],
+                'raw_bytes' => (float)$sim['used_flow'],
                 'formatted' => formatBytesAPI($sim['used_flow'])
             ]
         ]
