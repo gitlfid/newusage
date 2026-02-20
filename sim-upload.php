@@ -53,55 +53,90 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $errors = [];
 
         try {
-            $sql = "INSERT INTO sims (company_id, msisdn, imsi, iccid, sn, invoice_number, total_flow, custom_project, batch, card_type, expired_date, created_at) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW()) 
-                    ON DUPLICATE KEY UPDATE 
-                    imsi=VALUES(imsi), iccid=VALUES(iccid), sn=VALUES(sn), invoice_number=VALUES(invoice_number), 
-                    total_flow=VALUES(total_flow), custom_project=VALUES(custom_project), company_id=VALUES(company_id),
-                    batch=VALUES(batch), card_type=VALUES(card_type), expired_date=VALUES(expired_date)";
+            // Persiapkan Statement untuk Cek, Update, dan Insert
+            $stmt_check = $conn->prepare("SELECT imsi, iccid, sn, invoice_number, total_flow, custom_project, batch, card_type, expired_date FROM sims WHERE msisdn = ? LIMIT 1");
             
-            $stmt = $conn->prepare($sql);
+            $stmt_update = $conn->prepare("UPDATE sims SET company_id=?, imsi=?, iccid=?, sn=?, invoice_number=?, total_flow=?, custom_project=?, batch=?, card_type=?, expired_date=? WHERE msisdn=?");
+            
+            $stmt_insert = $conn->prepare("INSERT INTO sims (company_id, msisdn, imsi, iccid, sn, invoice_number, total_flow, custom_project, batch, card_type, expired_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
 
-            if (!$stmt) {
+            if (!$stmt_check || !$stmt_update || !$stmt_insert) {
                 throw new Exception("Database Prepare Error: " . $conn->error);
             }
 
             foreach ($data as $row) {
-                // MSISDN dan CARD TYPE (Wajib) - Jika kosong, row dilewati
                 $msisdn  = !empty($row['MSISDN']) ? (string)$row['MSISDN'] : null;
-                $card_type = !empty($row['CARD TYPE']) ? (string)$row['CARD TYPE'] : null;
-                
-                // Field Opsional (Akan diset NULL jika di Excel kosong, mencegah bentrok duplikat)
-                $imsi    = !empty($row['IMSI']) ? (string)$row['IMSI'] : null;  
-                $iccid   = !empty($row['ICCID']) ? (string)$row['ICCID'] : null; 
-                $sn      = !empty($row['SN']) ? (string)$row['SN'] : null;
-                $invoice = !empty($row['INVOICE NO']) ? (string)$row['INVOICE NO'] : null;
-                $project = !empty($row['PROJECT']) ? (string)$row['PROJECT'] : null;
-                $batch   = !empty($row['BATCH']) ? (string)$row['BATCH'] : null; 
+                if (!$msisdn) {
+                    $fail++;
+                    if (count($errors) < 5) $errors[] = "Row skipped: MSISDN is missing.";
+                    continue;
+                }
+
+                $card_type   = !empty($row['CARD TYPE']) ? (string)$row['CARD TYPE'] : null;
+                $imsi        = !empty($row['IMSI']) ? (string)$row['IMSI'] : null;  
+                $iccid       = !empty($row['ICCID']) ? (string)$row['ICCID'] : null; 
+                $sn          = !empty($row['SN']) ? (string)$row['SN'] : null;
+                $invoice     = !empty($row['INVOICE NO']) ? (string)$row['INVOICE NO'] : null;
+                $project     = !empty($row['PROJECT']) ? (string)$row['PROJECT'] : null;
+                $batch       = !empty($row['BATCH']) ? (string)$row['BATCH'] : null; 
                 $expired_raw = !empty($row['EXPIRED DATE']) ? $row['EXPIRED DATE'] : null;
                 
                 $expired_date = excelDateToMySQL($expired_raw);
                 
-                $quotaRaw = preg_replace('/[^0-9.]/', '', $row['DATAPACKAGE'] ?? '0');
-                $quotaMB = floatval($quotaRaw);
-                $totalFlowBytes = $quotaMB * 1024 * 1024; 
+                $quotaRaw = preg_replace('/[^0-9.]/', '', $row['DATAPACKAGE'] ?? '');
+                $totalFlowBytes = null;
+                if ($quotaRaw !== '') {
+                    $quotaMB = floatval($quotaRaw);
+                    $totalFlowBytes = $quotaMB * 1024 * 1024; 
+                }
 
-                if ($msisdn && $card_type) {
-                    $stmt->bind_param("isssssdssss", $company_id, $msisdn, $imsi, $iccid, $sn, $invoice, $totalFlowBytes, $project, $batch, $card_type, $expired_date);
+                // Cek DB apakah MSISDN sudah ada
+                $stmt_check->bind_param("s", $msisdn);
+                $stmt_check->execute();
+                $res = $stmt_check->get_result();
+
+                if ($res->num_rows > 0) {
+                    // DATA ADA -> LAKUKAN UPDATE (SMART MERGE)
+                    // Jika data di Excel kosong, gunakan data lama yang ada di DB. Jika di Excel diisi, timpa data lama.
+                    $existing = $res->fetch_assoc();
                     
-                    if ($stmt->execute()) {
-                        if ($stmt->affected_rows == 1) {
-                            $inserted++; // Data Baru
-                        } else {
-                            $updated++;  // Data Duplikat yang diperbarui
-                        }
+                    $upd_company   = $company_id;
+                    $upd_imsi      = $imsi !== null ? $imsi : $existing['imsi'];
+                    $upd_iccid     = $iccid !== null ? $iccid : $existing['iccid'];
+                    $upd_sn        = $sn !== null ? $sn : $existing['sn'];
+                    $upd_invoice   = $invoice !== null ? $invoice : $existing['invoice_number'];
+                    $upd_project   = $project !== null ? $project : $existing['custom_project'];
+                    $upd_batch     = $batch !== null ? $batch : $existing['batch'];
+                    $upd_card_type = $card_type !== null ? $card_type : $existing['card_type'];
+                    $upd_expired   = $expired_date !== null ? $expired_date : $existing['expired_date'];
+                    $upd_flow      = $totalFlowBytes !== null ? $totalFlowBytes : $existing['total_flow'];
+
+                    $stmt_update->bind_param("isssssdssss", $upd_company, $upd_imsi, $upd_iccid, $upd_sn, $upd_invoice, $upd_flow, $upd_project, $upd_batch, $upd_card_type, $upd_expired, $msisdn);
+                    
+                    if ($stmt_update->execute()) {
+                        $updated++;
                     } else {
                         $fail++;
-                        if (count($errors) < 5) $errors[] = "Error Row ($msisdn): " . $stmt->error;
+                        if (count($errors) < 5) $errors[] = "Update failed ($msisdn): " . $stmt_update->error;
                     }
+
                 } else {
-                    $fail++; 
-                    if (count($errors) < 5) $errors[] = "Row skipped: MSISDN and CARD TYPE are required.";
+                    // DATA TIDAK ADA -> LAKUKAN INSERT BARU
+                    if (!$card_type) {
+                        $fail++;
+                        if (count($errors) < 5) $errors[] = "Insert skipped ($msisdn): CARD TYPE is strictly required for new SIM.";
+                        continue;
+                    }
+
+                    $ins_flow = $totalFlowBytes !== null ? $totalFlowBytes : 0;
+                    $stmt_insert->bind_param("isssssdssss", $company_id, $msisdn, $imsi, $iccid, $sn, $invoice, $ins_flow, $project, $batch, $card_type, $expired_date);
+                    
+                    if ($stmt_insert->execute()) {
+                        $inserted++;
+                    } else {
+                        $fail++;
+                        if (count($errors) < 5) $errors[] = "Insert failed ($msisdn): " . $stmt_insert->error;
+                    }
                 }
             }
             
@@ -215,7 +250,7 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                     <ul class="flex flex-wrap -mb-px text-sm font-medium text-center" id="uploadTabs">
                         <li class="mr-2">
                             <button onclick="switchTab('sim-upload')" id="tab-sim-upload" class="inline-flex items-center gap-2 p-4 border-b-2 border-primary text-primary active dark:text-indigo-400 dark:border-indigo-400 transition-colors">
-                                <i class="ph ph-sim-card text-lg"></i> Register New SIMs
+                                <i class="ph ph-sim-card text-lg"></i> Register New / Update
                             </button>
                         </li>
                         <li class="mr-2">
@@ -283,7 +318,7 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                                         <span id="successCountSim" class="text-xl block">0</span> New Inserted
                                     </div>
                                     <div class="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-100 text-amber-700 font-bold">
-                                        <span id="duplicateCountSim" class="text-xl block">0</span> Duplicates (Updated)
+                                        <span id="duplicateCountSim" class="text-xl block">0</span> Updated (Existing)
                                     </div>
                                     <div class="p-3 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-100 text-red-700 font-bold">
                                         <span id="failCountSim" class="text-xl block">0</span> Failed
