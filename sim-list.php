@@ -23,6 +23,82 @@ if (!function_exists('getRealtimeStatusBadge')) {
     }
 }
 
+// --- API INDOSAT FUNCTIONS ---
+function getIndosatToken() {
+    static $token = null;
+    if ($token !== null) return $token;
+
+    $curl = curl_init();
+    curl_setopt_array($curl, array(
+      CURLOPT_URL => 'https://myim3biz.indosatooredoo.com/api/m2m/auth/token',
+      CURLOPT_RETURNTRANSFER => true,
+      CURLOPT_TIMEOUT => 5, // Timeout agar tidak hang jika server indosat lambat
+      CURLOPT_CUSTOMREQUEST => 'POST',
+      CURLOPT_POSTFIELDS => json_encode([
+          "grant_type" => "client_credentials",
+          "client_id" => "c81d8a14-b199-493f-b127-ae2903bb0803",
+          "client_secret" => "3QhmWbxYQCUaePfoIYcXgjAXaykJMjeq5YriFOtA"
+      ]),
+      CURLOPT_HTTPHEADER => array(
+        'Content-Type: application/json',
+        'Accept: application/json'
+      ),
+    ));
+    $response = curl_exec($curl);
+    curl_close($curl);
+    $data = json_decode($response, true);
+    
+    if (isset($data['access_token'])) {
+        $token = $data['access_token'];
+        return $token;
+    }
+    return false;
+}
+
+function getIndosatBenefit($token, $msisdn) {
+    $curl = curl_init();
+    curl_setopt_array($curl, array(
+      CURLOPT_URL => 'https://myim3biz.indosatooredoo.com/api/m2m/ido-mobile/remaining-benefit',
+      CURLOPT_RETURNTRANSFER => true,
+      CURLOPT_TIMEOUT => 5,
+      CURLOPT_CUSTOMREQUEST => 'GET',
+      CURLOPT_POSTFIELDS => json_encode(["asset" => $msisdn]),
+      CURLOPT_HTTPHEADER => array(
+        'Authorization: Bearer ' . $token,
+        'Content-Type: application/json',
+        'Accept: application/json'
+      ),
+    ));
+    $response = curl_exec($curl);
+    curl_close($curl);
+    return json_decode($response, true);
+}
+
+function getIndosatTraffic($token, $msisdn) {
+    $currentMonth = date('Y-m');
+    $curl = curl_init();
+    curl_setopt_array($curl, array(
+      CURLOPT_URL => 'https://myim3biz.indosatooredoo.com/api/m2m/ido-mobile/traffic-summary',
+      CURLOPT_RETURNTRANSFER => true,
+      CURLOPT_TIMEOUT => 5,
+      CURLOPT_CUSTOMREQUEST => 'GET',
+      CURLOPT_POSTFIELDS => json_encode([
+          "group" => "ASSET",
+          "period" => "MONTHLY",
+          "range" => [$currentMonth, $currentMonth], // Dinamis mengikuti bulan berjalan
+          "asset" => $msisdn
+      ]),
+      CURLOPT_HTTPHEADER => array(
+        'Authorization: Bearer ' . $token,
+        'Content-Type: application/json',
+        'Accept: application/json'
+      ),
+    ));
+    $response = curl_exec($curl);
+    curl_close($curl);
+    return json_decode($response, true);
+}
+
 // --- 1. DATA ACCESS CONTROL ---
 $allowed_comps = getClientIdsForUser($user_id);
 $company_condition = "";
@@ -39,7 +115,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     // A. UPDATE TAGS
     if (isset($_POST['action']) && $_POST['action'] == 'update_tags') {
         $ids_raw = $_POST['sim_ids']; 
-        // Filter ID menjadi integer untuk keamanan
         $ids = array_filter(array_map('intval', explode(',', $ids_raw)));
         $clean_tags = trim($_POST['tags_final']); 
         
@@ -384,7 +459,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
 
                 <div class="bg-white dark:bg-darkcard rounded-2xl shadow-lg shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 overflow-hidden animate-fade-in-up" style="animation-delay: 0.2s;">
                     <div class="overflow-x-auto relative">
-                        <table id="mainTable" class="w-full text-left border-collapse min-w-[1800px]">
+                        <table id="mainTable" class="w-full text-left border-collapse min-w-[1900px]">
                             <thead class="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 text-[11px] uppercase font-bold tracking-wider">
                                 <tr id="tableHeaderRow">
                                     <th data-col="checkbox" class="px-4 py-4 text-center border-r border-slate-100 dark:border-slate-700/50">
@@ -403,19 +478,74 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                     <th data-col="iccid" class="px-4 py-4">ICCID</th>
                                     <th data-col="sn" class="px-4 py-4">SN</th>
                                     <th data-col="package" class="px-4 py-4 text-center">Package</th>
-                                    <th data-col="usage" class="px-4 py-4 min-w-[180px]">Usage</th>
+                                    <th data-col="rollover" class="px-4 py-4 text-center">Data Rollover</th> <th data-col="usage" class="px-4 py-4 min-w-[180px]">Usage</th>
                                     <th data-col="action" class="px-4 py-4 text-center">Action</th>
                                 </tr>
                             </thead>
                             <tbody id="tableBody" class="divide-y divide-slate-100 dark:divide-slate-700 text-xs text-slate-600 dark:text-slate-300">
                                 <?php if($result->num_rows > 0): while($row = $result->fetch_assoc()): 
-                                    // PENGGUNAAN ID SEBAGAI IDENTITAS UTAMA AGAR TIDAK BUG SAAT ICCID KOSONG
                                     $row_id = $row['id'];
-                                    
                                     $companyName = $row['company_name'] ?? 'Unknown';
                                     $displayProject = !empty($row['custom_project']) ? $row['custom_project'] : $row['default_project'];
-                                    $usedRaw = floatval($row['used_flow']??0);
+                                    
+                                    // Default DB Values
                                     $totalRaw = floatval($row['total_flow']??0);
+                                    $usedRaw = floatval($row['used_flow']??0);
+                                    $rolloverRaw = 0;
+                                    
+                                    // Check if Indosat Number
+                                    $msisdn = $row['msisdn'] ?? '';
+                                    $isIndosat = preg_match('/^(62815|62816|62856|62857)/', $msisdn);
+                                    
+                                    if ($isIndosat) {
+                                        $token = getIndosatToken();
+                                        if ($token) {
+                                            $benefit = getIndosatBenefit($token, $msisdn);
+                                            $traffic = getIndosatTraffic($token, $msisdn);
+                                            
+                                            // Process Benefit (Kuota Utama & Rollover)
+                                            if (isset($benefit['services'][0]['quotas'])) {
+                                                foreach ($benefit['services'][0]['quotas'] as $quota) {
+                                                    // Kuota Utama
+                                                    if (strtoupper($quota['type']) === 'DATA' || stripos($quota['name'], 'utama') !== false) {
+                                                        $valRemaining = floatval($quota['remaining'] ?? 0);
+                                                        $unit = strtoupper($quota['unit'] ?? 'GB');
+                                                        if ($unit === 'MB') {
+                                                            $totalRaw = $valRemaining * 1048576; 
+                                                        } else {
+                                                            // As requested: 50GB = 50000MB
+                                                            $totalRaw = ($valRemaining * 1000) * 1048576;
+                                                        }
+                                                    }
+                                                    // Kuota Rollover
+                                                    if (strtoupper($quota['type']) === 'DATAROLLOVER' || stripos($quota['name'], 'rollover') !== false) {
+                                                        $valRemaining = floatval($quota['remaining'] ?? 0);
+                                                        $unit = strtoupper($quota['unit'] ?? 'GB');
+                                                        if (empty($unit) || $unit === 'GB') {
+                                                            $rolloverRaw = ($valRemaining * 1000) * 1048576;
+                                                        } else if ($unit === 'MB') {
+                                                            $rolloverRaw = $valRemaining * 1048576;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            
+                                            // Process Traffic (Usage)
+                                            if (isset($traffic['traffic']['data'][0])) {
+                                                $dataTraffic = $traffic['traffic']['data'][0];
+                                                $valUsage = floatval($dataTraffic['value'] ?? 0);
+                                                $unit = strtoupper($dataTraffic['unit'] ?? 'GB');
+                                                if ($unit === 'MB') {
+                                                    $usedRaw = $valUsage * 1048576;
+                                                } else if ($unit === 'KB') {
+                                                    $usedRaw = ($valUsage / 1000) * 1048576;
+                                                } else { // GB
+                                                    $usedRaw = ($valUsage * 1000) * 1048576;
+                                                }
+                                            }
+                                        }
+                                    }
+
                                     $pct = ($totalRaw > 0) ? ($usedRaw / $totalRaw) * 100 : 0;
                                     $barColor = ($pct > 90) ? 'bg-red-500' : (($pct > 70) ? 'bg-yellow-500' : 'bg-emerald-500');
                                 ?>
@@ -443,7 +573,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                         </div>
                                     </td>
                                     <td data-col="msisdn" class="px-4 py-3 font-mono font-bold text-primary dark:text-indigo-400 select-all">
-                                        <a href="sim-detail?id=<?= $row_id ?>" class="hover:underline">
+                                        <a href="sim-detail.php?id=<?= $row_id ?>" class="hover:underline">
                                             <?= htmlspecialchars($row['msisdn'] ?? '-') ?>
                                         </a>
                                     </td>
@@ -494,6 +624,15 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                     <td data-col="package" class="px-4 py-3 text-center">
                                         <span class="font-bold text-xs text-slate-700 dark:text-slate-200 whitespace-nowrap dynamic-data" data-bytes="<?= $totalRaw ?>"><?= formatToDefaultMB($totalRaw) ?></span>
                                     </td>
+                                    <td data-col="rollover" class="px-4 py-3 text-center">
+                                        <?php if($isIndosat && $rolloverRaw > 0): ?>
+                                            <span class="font-bold text-xs text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 dark:text-indigo-400 px-2 py-1 rounded border border-indigo-100 dark:border-indigo-800 whitespace-nowrap dynamic-data" data-bytes="<?= $rolloverRaw ?>"><?= formatToDefaultMB($rolloverRaw) ?></span>
+                                        <?php elseif($isIndosat): ?>
+                                            <span class="font-bold text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap dynamic-data" data-bytes="0">0.00 MB</span>
+                                        <?php else: ?>
+                                            <span class="text-xs text-slate-400 dark:text-slate-500">-</span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td data-col="usage" class="px-4 py-3">
                                         <div class="w-full">
                                             <div class="flex justify-between items-end mb-1">
@@ -506,11 +645,11 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                         </div>
                                     </td>
                                     <td data-col="action" class="px-4 py-3 text-center">
-                                        <a href="sim-detail?id=<?= $row_id ?>" class="p-2 rounded-lg text-slate-400 hover:text-primary hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-all inline-block"><i class="ph ph-caret-right text-lg"></i></a>
+                                        <a href="sim-detail.php?id=<?= $row_id ?>" class="p-2 rounded-lg text-slate-400 hover:text-primary hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-all inline-block"><i class="ph ph-caret-right text-lg"></i></a>
                                     </td>
                                 </tr>
                                 <?php endwhile; else: ?>
-                                <tr><td colspan="16" class="py-12 text-center text-slate-500">No SIM cards found matching your filters.</td></tr>
+                                <tr><td colspan="17" class="py-12 text-center text-slate-500">No SIM cards found matching your filters.</td></tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
@@ -670,7 +809,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
         }
 
         // --- 2. COLUMN LOGIC ---
-        const CONFIG_KEY = 'simTableConfig_V10'; 
+        const CONFIG_KEY = 'simTableConfig_V11'; 
         const defaultConfig = [
             { id: 'checkbox', name: '', width: 50, frozen: true, visible: true },
             { id: 'tags', name: 'Tags', width: 120, frozen: true, visible: true },
@@ -686,6 +825,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
             { id: 'iccid', name: 'ICCID', width: 160, frozen: false, visible: true },
             { id: 'sn', name: 'SN', width: 100, frozen: false, visible: true },
             { id: 'package', name: 'Package', width: 180, frozen: false, visible: true }, 
+            { id: 'rollover', name: 'Data Rollover', width: 140, frozen: false, visible: true }, // NEW COLUMN
             { id: 'usage', name: 'Usage', width: 200, frozen: false, visible: true },
             { id: 'action', name: 'Action', width: 80, frozen: false, visible: true }
         ];
