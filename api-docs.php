@@ -106,7 +106,7 @@ checkLogin();
                         </div>
                         <div class="flex items-center gap-2">
                             <span class="px-3 py-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 font-bold text-[11px] rounded-lg uppercase tracking-wide">POST</span>
-                            <code class="text-sm font-mono font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">/api/v1/generate_keys.php</code>
+                            <code class="text-sm font-mono font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">/api/v1/generate_keys</code>
                         </div>
                     </div>
                     <div class="p-6 md:p-8">
@@ -127,7 +127,7 @@ checkLogin();
                                         <button onclick="copyCode('code-gen-req')" class="text-slate-400 hover:text-white transition-colors" title="Copy code"><i class="ph ph-copy text-lg"></i></button>
                                     </div>
                                     <div class="p-4 text-sm font-mono text-slate-300 overflow-x-auto code-scroll" id="code-gen-req">
-<span class="text-pink-400">curl</span> <span class="text-slate-400">-X</span> <span class="text-emerald-400">POST</span> <span class="text-amber-300">"http://[YOUR_SERVER_IP]:6012/api/v1/generate_keys.php"</span> \
+<span class="text-pink-400">curl</span> <span class="text-slate-400">-X</span> <span class="text-emerald-400">POST</span> <span class="text-amber-300">"https://api.linksfield.cloud/api/v1/generate_keys"</span> \
      <span class="text-slate-400">-H</span> <span class="text-amber-300">"Content-Type: application/json"</span> \
      <span class="text-slate-400">-d</span> <span class="text-amber-300">'{"user_code": "LFID-XXXXXX"}'</span>
                                     </div>
@@ -142,7 +142,7 @@ checkLogin();
                                         </div>
                                         <span class="text-xs font-mono text-slate-400">String</span>
                                     </div>
-                                    <div class="pt-3 text-sm text-slate-600 dark:text-slate-400">Your unique account code (e.g., LFID-3FE631).</div>
+                                    <div class="pt-3 text-sm text-slate-600 dark:text-slate-400">Your unique account code (e.g., LFID-3LL610).</div>
                                 </div>
                             </div>
                             
@@ -160,10 +160,10 @@ checkLogin();
   <span class="text-blue-400">"status"</span>: <span class="text-emerald-400">"success"</span>,
   <span class="text-blue-400">"message"</span>: <span class="text-emerald-400">"API Keys generated successfully"</span>,
   <span class="text-blue-400">"data"</span>: {
-    <span class="text-blue-400">"user_code"</span>: <span class="text-amber-300">"LFID-3FE631"</span>,
+    <span class="text-blue-400">"user_code"</span>: <span class="text-amber-300">"LFID-XXXXX"</span>,
     <span class="text-blue-400">"username"</span>: <span class="text-amber-300">"indonesia"</span>,
-    <span class="text-blue-400">"access_key"</span>: <span class="text-amber-300">"c3f8e91d5a7b2c4e6f8a0d1b3..."</span>,
-    <span class="text-blue-400">"secret_key"</span>: <span class="text-amber-300">"a1b2c3d4e5f6a7b8c9d0e1f2a..."</span>
+    <span class="text-blue-400">"access_key"</span>: <span class="text-amber-300">"cf8e91d5a7b2c4e6f8a0d1b3..."</span>,
+    <span class="text-blue-400">"secret_key"</span>: <span class="text-amber-300">"a2c3d4e5f6a7b8c9d0e1f2a..."</span>
   }
 }
                                     </div>
@@ -181,7 +181,7 @@ checkLogin();
                         </div>
                         <div class="flex items-center gap-2">
                             <span class="px-3 py-1 bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50 font-bold text-[11px] rounded-lg uppercase tracking-wide">GET</span>
-                            <code class="text-sm font-mono font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">/api/v1/sim.php</code>
+                            <code class="text-sm font-mono font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">/api/v1/sim</code>
                         </div>
                     </div>
                     <div class="p-6 md:p-8">
@@ -202,7 +202,7 @@ checkLogin();
                                         <button onclick="copyCode('code-sim-req')" class="text-slate-400 hover:text-white transition-colors" title="Copy code"><i class="ph ph-copy text-lg"></i></button>
                                     </div>
                                     <div class="p-4 text-sm font-mono text-slate-300 overflow-x-auto code-scroll" id="code-sim-req">
-<span class="text-pink-400">curl</span> <span class="text-slate-400">-X</span> <span class="text-blue-400">GET</span> <span class="text-amber-300">"http://[YOUR_SERVER_IP]:6012/api/v1/sim.php?msisdn=628111811844"</span> \
+<span class="text-pink-400">curl</span> <span class="text-slate-400">-X</span> <span class="text-blue-400">GET</span> <span class="text-amber-300">"https://api.linksfield.cloud/api/v1/sim?msisdn=628111811844"</span> \
      <span class="text-slate-400">-H</span> <span class="text-amber-300">"X-Access-Key: YOUR_ACCESS_KEY"</span> \
      <span class="text-slate-400">-H</span> <span class="text-amber-300">"X-Secret-Key: YOUR_SECRET_KEY"</span>
                                     </div>
