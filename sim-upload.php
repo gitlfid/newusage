@@ -30,7 +30,7 @@ function excelDateToMySQL($excelDate) {
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     
     // Config untuk upload besar
-    ini_set('display_errors', 0); // Matikan display error HTML agar tidak merusak JSON
+    ini_set('display_errors', 0); 
     ini_set('memory_limit', '512M');
     set_time_limit(300);
     header('Content-Type: application/json');
@@ -53,12 +53,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             exit;
         }
 
-        $success = 0;
+        $inserted = 0;
+        $updated = 0; // Untuk melacak duplikat
         $fail = 0;
         $errors = [];
 
         try {
-            // Query Insert/Update Diperluas
             $sql = "INSERT INTO sims (company_id, msisdn, imsi, iccid, sn, invoice_number, total_flow, custom_project, batch, card_type, expired_date, created_at) 
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW()) 
                     ON DUPLICATE KEY UPDATE 
@@ -73,48 +73,51 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
 
             foreach ($data as $row) {
-                // Data sudah dinormalisasi (UPPERCASE KEY) di JS
-                $msisdn  = $row['MSISDN'] ?? null;
-                $card_type = $row['CARD TYPE'] ?? null; // Field Baru (Wajib)
+                // MSISDN dan CARD TYPE (Wajib)
+                $msisdn  = !empty($row['MSISDN']) ? (string)$row['MSISDN'] : null;
+                $card_type = !empty($row['CARD TYPE']) ? (string)$row['CARD TYPE'] : null;
                 
-                // Field Opsional
-                $imsi    = $row['IMSI'] ?? '';  
-                $iccid   = $row['ICCID'] ?? ''; 
-                $sn      = $row['SN'] ?? null;
-                $invoice = $row['INVOICE NO'] ?? null;
-                $project = $row['PROJECT'] ?? null;
-                $batch   = $row['BATCH'] ?? null; // Field Baru (Opsional)
-                $expired_raw = $row['EXPIRED DATE'] ?? null; // Field Baru (Opsional)
+                // Field Opsional (Ubah menjadi NULL jika kosong agar tidak bentrok Unique Key)
+                $imsi    = !empty($row['IMSI']) ? (string)$row['IMSI'] : null;  
+                $iccid   = !empty($row['ICCID']) ? (string)$row['ICCID'] : null; 
+                $sn      = !empty($row['SN']) ? (string)$row['SN'] : null;
+                $invoice = !empty($row['INVOICE NO']) ? (string)$row['INVOICE NO'] : null;
+                $project = !empty($row['PROJECT']) ? (string)$row['PROJECT'] : null;
+                $batch   = !empty($row['BATCH']) ? (string)$row['BATCH'] : null; 
+                $expired_raw = !empty($row['EXPIRED DATE']) ? $row['EXPIRED DATE'] : null;
                 
-                // Proses data khusus
                 $expired_date = excelDateToMySQL($expired_raw);
                 
                 $quotaRaw = preg_replace('/[^0-9.]/', '', $row['DATAPACKAGE'] ?? '0');
                 $quotaMB = floatval($quotaRaw);
                 $totalFlowBytes = $quotaMB * 1024 * 1024; 
 
-                // VALIDASI: MSISDN DAN CARD TYPE WAJIB
                 if ($msisdn && $card_type) {
-                    // Tipe data: i=int, s=string, d=double
-                    // Urutan: company_id(i), msisdn(s), imsi(s), iccid(s), sn(s), invoice(s), total_flow(d), project(s), batch(s), card_type(s), expired_date(s)
                     $stmt->bind_param("isssssdssss", $company_id, $msisdn, $imsi, $iccid, $sn, $invoice, $totalFlowBytes, $project, $batch, $card_type, $expired_date);
                     
                     if ($stmt->execute()) {
-                        $success++;
+                        // Jika insert baru, affected_rows = 1. Jika update (Duplikat), affected_rows = 2. 
+                        // Jika update tapi data sama persis, affected_rows = 0.
+                        if ($stmt->affected_rows == 1) {
+                            $inserted++;
+                        } else {
+                            $updated++;
+                        }
                     } else {
                         $fail++;
-                        if (count($errors) < 3) $errors[] = "Error Row ($msisdn): " . $stmt->error;
+                        if (count($errors) < 5) $errors[] = "Error Row ($msisdn): " . $stmt->error;
                     }
                 } else {
                     $fail++; 
-                    if (count($errors) < 3) $errors[] = "Error: MSISDN and CARD TYPE are required. Row skipped.";
+                    if (count($errors) < 5) $errors[] = "Row skipped: MSISDN and CARD TYPE are required.";
                 }
             }
             
             echo json_encode([
                 'status' => 'success', 
                 'processed' => count($data), 
-                'success' => $success, 
+                'inserted' => $inserted, 
+                'updated' => $updated,
                 'fail' => $fail,
                 'debug_errors' => $errors
             ]);
@@ -136,13 +139,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         
         try {
             $stmt = $conn->prepare("UPDATE sims SET used_flow = ? WHERE msisdn = ?");
-            
-            if (!$stmt) {
-                throw new Exception("Database Prepare Error: " . $conn->error);
-            }
+            if (!$stmt) throw new Exception("Database Prepare Error: " . $conn->error);
 
             foreach ($data as $row) {
-                $msisdn = $row['MSISDN'] ?? null;
+                $msisdn = !empty($row['MSISDN']) ? (string)$row['MSISDN'] : null;
                 $usageRaw = preg_replace('/[^0-9.]/', '', $row['USAGE'] ?? '0');
                 $usageMB = floatval($usageRaw);
                 $usageBytes = $usageMB * 1024 * 1024; 
@@ -216,7 +216,7 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                         </div>
                         Batch Upload Center
                     </h2>
-                    <p class="text-sm text-slate-500 mt-1 ml-12">Import SIM data or update usage usage efficiently using Excel files.</p>
+                    <p class="text-sm text-slate-500 mt-1 ml-12">Import SIM data or update usage efficiently using Excel files.</p>
                 </div>
 
                 <div class="mb-6 border-b border-slate-200 dark:border-slate-700 animate-slide-up" style="animation-delay: 0.1s;">
@@ -286,9 +286,12 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                                 <div class="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2.5 mb-4 overflow-hidden">
                                     <div id="barSim" class="bg-primary h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
                                 </div>
-                                <div class="grid grid-cols-2 gap-4 text-center">
-                                    <div class="p-3 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-100 text-green-700 font-bold">
-                                        <span id="successCountSim" class="text-xl block">0</span> Success
+                                <div class="grid grid-cols-3 gap-3 text-center">
+                                    <div class="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 text-emerald-700 font-bold">
+                                        <span id="successCountSim" class="text-xl block">0</span> New Inserted
+                                    </div>
+                                    <div class="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-100 text-amber-700 font-bold">
+                                        <span id="duplicateCountSim" class="text-xl block">0</span> Duplicates (Updated)
                                     </div>
                                     <div class="p-3 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-100 text-red-700 font-bold">
                                         <span id="failCountSim" class="text-xl block">0</span> Failed
@@ -425,7 +428,8 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                 const data = new Uint8Array(e.target.result);
                 const workbook = XLSX.read(data, { type: 'array' });
                 const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                let jsonData = XLSX.utils.sheet_to_json(firstSheet);
+                // Raw = false untuk mengambil string tanggal apa adanya dari Excel jika format string
+                let jsonData = XLSX.utils.sheet_to_json(firstSheet, { raw: false, dateNF: 'yyyy-mm-dd' });
 
                 jsonData = jsonData.map(normalizeKeys);
 
@@ -434,10 +438,8 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                     return;
                 }
 
-                // Check Mandatory Columns
                 let missing = [];
                 if (type === 'sim') {
-                    // UDPATE: MSISDN DAN CARD TYPE WAJIB
                     const req = ['MSISDN', 'CARD TYPE'];
                     const keys = Object.keys(jsonData[0]);
                     missing = req.filter(col => !keys.includes(col));
@@ -499,8 +501,8 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
             
             document.getElementById('progressAreaSim').classList.remove('hidden');
             
-            // Reset
-            let totalSuccess = 0;
+            let totalInserted = 0;
+            let totalUpdated = 0;
             let totalFail = 0;
             let processed = 0;
             const batchSize = 50; 
@@ -527,8 +529,10 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                         document.getElementById('errorLogSim').classList.remove('hidden');
                         document.getElementById('errorMsgSim').innerText = result.message;
                     } else {
-                        totalSuccess += result.success;
-                        totalFail += result.fail;
+                        totalInserted += result.inserted || 0;
+                        totalUpdated += result.updated || 0;
+                        totalFail += result.fail || 0;
+                        
                         if(result.debug_errors && result.debug_errors.length > 0) {
                              document.getElementById('errorLogSim').classList.remove('hidden');
                              document.getElementById('errorMsgSim').innerText = result.debug_errors[0];
@@ -544,7 +548,8 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
                 
                 document.getElementById('barSim').style.width = percent + '%';
                 document.getElementById('percentSim').innerText = percent + '%';
-                document.getElementById('successCountSim').innerText = totalSuccess;
+                document.getElementById('successCountSim').innerText = totalInserted;
+                document.getElementById('duplicateCountSim').innerText = totalUpdated;
                 document.getElementById('failCountSim').innerText = totalFail;
             }
 
@@ -590,7 +595,6 @@ while($r = $cQ->fetch_assoc()) $compArr[] = $r;
         function downloadTemplate(type) {
             const wb = XLSX.utils.book_new();
             let data = [];
-            // UPDATE TEMPLATE DEFAULT DENGAN KOLOM BARU
             if (type === 'sim') data = [[ "MSISDN", "IMSI", "ICCID", "SN", "INVOICE NO", "DATAPACKAGE", "PROJECT", "BATCH", "EXPIRED DATE", "CARD TYPE" ]];
             else data = [[ "MSISDN", "USAGE" ]];
             const ws = XLSX.utils.aoa_to_sheet(data);
