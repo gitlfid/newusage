@@ -502,7 +502,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                         </div>
                                     </td>
                                     <td data-col="action" class="px-4 py-3 text-center">
-                                        <a href="sim-detail.php?iccid=<?= $iccid ?>" class="p-2 rounded-lg text-slate-400 hover:text-primary hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-all inline-block"><i class="ph ph-caret-right text-lg"></i></a>
+                                        <a href="sim-detail?iccid=<?= $iccid ?>" class="p-2 rounded-lg text-slate-400 hover:text-primary hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-all inline-block"><i class="ph ph-caret-right text-lg"></i></a>
                                     </td>
                                 </tr>
                                 <?php endwhile; else: ?>

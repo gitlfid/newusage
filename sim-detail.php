@@ -1,7 +1,7 @@
 <?php 
 include 'config.php';
 checkLogin();
-enforcePermission('sim_list'); // Menggunakan permission yang sama dengan sim list
+enforcePermission('sim_list');
 
 // --- 1. PREPARATION & HELPER ---
 $user_id = $_SESSION['user_id'];
@@ -12,13 +12,10 @@ if (empty($iccid_req)) {
     exit();
 }
 
+// Fungsi format bytes untuk fallback awal sebelum ditimpa JS
 function formatBytesMB($bytes) { 
     if ($bytes <= 0) return '0.00 MB';
     return number_format($bytes / 1048576, 2) . ' MB';
-}
-function formatBytesGB($bytes) {
-    if ($bytes <= 0) return '0.00 GB';
-    return number_format($bytes / 1073741824, 2) . ' GB';
 }
 
 // --- 2. DATA ACCESS CONTROL ---
@@ -57,14 +54,17 @@ $pct_display = min(100, $percentage);
 $barColor = 'bg-emerald-500';
 $glowColor = 'shadow-emerald-500/50';
 $textColor = 'text-emerald-500';
+$cardColor = 'bg-emerald-50 border-emerald-200 text-emerald-700'; // Untuk card remaining
 if ($percentage >= 90) {
     $barColor = 'bg-red-500';
     $glowColor = 'shadow-red-500/50';
     $textColor = 'text-red-500';
+    $cardColor = 'bg-red-50 border-red-200 text-red-700';
 } elseif ($percentage >= 70) {
     $barColor = 'bg-amber-500';
     $glowColor = 'shadow-amber-500/50';
     $textColor = 'text-amber-500';
+    $cardColor = 'bg-amber-50 border-amber-200 text-amber-700';
 }
 
 // --- 4. FETCH HISTORY DATA ---
@@ -110,10 +110,6 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
         }
     </script>
     <style>
-        /* Custom Cut Corner for SIM Card Visual */
-        .sim-shape {
-            clip-path: polygon(0 0, 80% 0, 100% 20%, 100% 100%, 0 100%);
-        }
         .sim-chip-gradient {
             background: linear-gradient(135deg, #FDE68A 0%, #D97706 100%);
         }
@@ -123,6 +119,14 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
         }
         .dark .timeline-dot::before { background-color: #334155; }
         .timeline-item:last-child .timeline-dot::before { display: none; }
+        
+        /* Pattern for SIM Chip */
+        .chip-lines {
+            background-image: 
+                linear-gradient(90deg, rgba(180,83,9,0.3) 1px, transparent 1px),
+                linear-gradient(0deg, rgba(180,83,9,0.3) 1px, transparent 1px);
+            background-size: 15px 15px;
+        }
     </style>
 </head>
 <body class="bg-[#F8FAFC] dark:bg-darkbg text-slate-600 dark:text-slate-300 antialiased font-sans">
@@ -155,68 +159,83 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                     
                     <div class="lg:col-span-4 space-y-8 animate-fade-in-up" style="animation-delay: 0.1s;">
                         
-                        <div class="relative w-full aspect-[2/3] max-w-[320px] mx-auto sim-shape bg-gradient-to-br from-slate-800 to-slate-900 dark:from-slate-700 dark:to-slate-900 shadow-2xl p-6 flex flex-col justify-between transform transition-transform hover:scale-105 duration-500 group">
+                        <div class="relative w-full aspect-[1.58/1] max-w-[400px] mx-auto bg-[#F8FAFC] dark:bg-slate-200 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-200 overflow-hidden transform transition-transform hover:scale-105 duration-500 group flex items-center">
                             
-                            <div class="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(circle_at_center,_transparent_0,_transparent_49%,_#fff_50%,_#fff_100%)] bg-[length:10px_10px]"></div>
+                            <div class="absolute left-6 top-1/2 -translate-y-1/2 w-[110px] h-[85px] border-[3px] border-slate-400/50 rounded-xl border-dashed"></div>
 
-                            <div class="relative z-10 flex justify-between items-start">
-                                <span class="px-3 py-1 bg-white/10 backdrop-blur-md rounded-lg text-white font-bold text-[10px] uppercase tracking-widest border border-white/20">
-                                    <?= htmlspecialchars($sim['card_type'] ?: 'STANDARD SIM') ?>
-                                </span>
-                                <i class="ph-fill ph-wifi-high text-white/40 text-3xl group-hover:text-white/80 transition-colors"></i>
-                            </div>
-
-                            <div class="relative z-10 w-24 h-24 mx-auto sim-chip-gradient rounded-xl shadow-inner border border-amber-300/50 flex flex-wrap p-1 gap-1">
-                                <div class="w-[45%] h-[30%] border border-amber-600/30 rounded-tl-lg"></div>
-                                <div class="w-[45%] h-[30%] border border-amber-600/30 rounded-tr-lg"></div>
-                                <div class="w-[100%] h-[30%] border border-amber-600/30 flex items-center justify-center">
-                                    <div class="w-8 h-8 rounded-full border border-amber-600/30"></div>
+                            <div class="absolute left-[33px] top-1/2 -translate-y-1/2 z-10 w-24 h-16 sim-chip-gradient rounded-md shadow-sm border border-amber-600/40 overflow-hidden flex">
+                                <div class="w-full h-full chip-lines relative">
+                                    <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 border border-amber-700/30 rounded-full"></div>
+                                    <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-px bg-amber-700/30"></div>
                                 </div>
-                                <div class="w-[45%] h-[30%] border border-amber-600/30 rounded-bl-lg"></div>
-                                <div class="w-[45%] h-[30%] border border-amber-600/30 rounded-br-lg"></div>
                             </div>
 
-                            <div class="relative z-10 space-y-3 text-white">
+                            <div class="absolute right-6 top-6 bottom-6 flex flex-col justify-between text-right text-slate-800 z-10 w-1/2">
                                 <div>
-                                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-0.5">MSISDN</p>
-                                    <p class="text-xl font-mono font-bold tracking-wider drop-shadow-md select-all"><?= htmlspecialchars($sim['msisdn'] ?: 'UNKNOWN') ?></p>
+                                    <span class="inline-block px-2.5 py-1 bg-primary text-white font-bold text-[9px] uppercase tracking-widest rounded-md shadow-sm mb-2">
+                                        <?= htmlspecialchars($sim['card_type'] ?: 'STANDARD SIM') ?>
+                                    </span>
                                 </div>
-                                <div>
-                                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-0.5">ICCID</p>
-                                    <p class="text-sm font-mono tracking-widest select-all"><?= htmlspecialchars($sim['iccid'] ?: 'UNKNOWN') ?></p>
+                                <div class="space-y-1.5">
+                                    <div>
+                                        <p class="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-0.5">MSISDN</p>
+                                        <p class="text-sm font-mono font-bold tracking-wider text-slate-900 select-all"><?= htmlspecialchars($sim['msisdn'] ?: 'UNKNOWN') ?></p>
+                                    </div>
+                                    <div>
+                                        <p class="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-0.5">ICCID</p>
+                                        <p class="text-[10px] font-mono tracking-widest text-slate-700 select-all"><?= htmlspecialchars($sim['iccid'] ?: 'UNKNOWN') ?></p>
+                                    </div>
                                 </div>
                             </div>
+                            
+                            <div class="absolute bottom-0 right-0 w-32 h-32 bg-blue-500/10 rounded-tl-full blur-2xl pointer-events-none"></div>
                         </div>
 
                         <div class="bg-white dark:bg-darkcard rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 p-6">
                             <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Ownership Info</h3>
                             
-                            <div class="flex items-center gap-4 mb-6">
-                                <div class="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-primary flex items-center justify-center font-bold text-lg border border-indigo-100 dark:border-indigo-800">
+                            <div class="flex items-center gap-4 mb-6 pb-6 border-b border-slate-100 dark:border-slate-700">
+                                <div class="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-primary flex items-center justify-center font-bold text-lg border border-indigo-100 dark:border-indigo-800 flex-shrink-0">
                                     <?= strtoupper(substr($sim['company_name'] ?? 'U', 0, 1)) ?>
                                 </div>
                                 <div>
-                                    <p class="font-bold text-slate-900 dark:text-white text-lg"><?= htmlspecialchars($sim['company_name'] ?? 'Unknown Company') ?></p>
+                                    <p class="font-bold text-slate-900 dark:text-white text-lg leading-tight mb-1"><?= htmlspecialchars($sim['company_name'] ?? 'Unknown Company') ?></p>
                                     <p class="text-xs text-slate-500">Tier Level: <span class="font-bold text-primary">L<?= htmlspecialchars($sim['level'] ?? '1') ?></span></p>
                                 </div>
                             </div>
 
-                            <div class="space-y-4">
-                                <div class="flex flex-col">
-                                    <span class="text-[10px] font-bold text-slate-400 uppercase">Project</span>
-                                    <span class="text-sm font-medium text-slate-700 dark:text-slate-200"><?= htmlspecialchars($sim['custom_project'] ?: 'Default Project') ?></span>
+                            <div class="space-y-5">
+                                <div>
+                                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Project</p>
+                                    <p class="text-sm font-medium text-slate-700 dark:text-slate-200"><?= htmlspecialchars($sim['custom_project'] ?: 'Default Project') ?></p>
                                 </div>
-                                <div class="flex flex-col">
-                                    <span class="text-[10px] font-bold text-slate-400 uppercase">Batch</span>
-                                    <span class="text-sm font-medium text-slate-700 dark:text-slate-200"><?= htmlspecialchars($sim['batch'] ?: '-') ?></span>
+                                
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Batch</p>
+                                        <p class="text-sm font-medium text-slate-700 dark:text-slate-200"><?= htmlspecialchars($sim['batch'] ?: '-') ?></p>
+                                    </div>
+                                    <div>
+                                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Expired Date</p>
+                                        <p class="text-sm font-medium text-slate-700 dark:text-slate-200">
+                                            <?= !empty($sim['expired_date']) ? date('d M Y', strtotime($sim['expired_date'])) : '-' ?>
+                                        </p>
+                                    </div>
                                 </div>
-                                <div class="flex flex-col">
-                                    <span class="text-[10px] font-bold text-slate-400 uppercase">Serial Number (SN)</span>
-                                    <span class="text-sm font-mono text-slate-700 dark:text-slate-200 select-all"><?= htmlspecialchars($sim['sn'] ?: '-') ?></span>
+
+                                <div>
+                                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Serial Number (SN)</p>
+                                    <p class="text-sm font-mono text-slate-700 dark:text-slate-200 select-all"><?= htmlspecialchars($sim['sn'] ?: '-') ?></p>
                                 </div>
-                                <div class="flex flex-col">
-                                    <span class="text-[10px] font-bold text-slate-400 uppercase">IMSI</span>
-                                    <span class="text-sm font-mono text-slate-700 dark:text-slate-200 select-all"><?= htmlspecialchars($sim['imsi'] ?: '-') ?></span>
+                                
+                                <div>
+                                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">IMSI</p>
+                                    <p class="text-sm font-mono text-slate-700 dark:text-slate-200 select-all"><?= htmlspecialchars($sim['imsi'] ?: '-') ?></p>
+                                </div>
+                                
+                                <div>
+                                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Invoice No</p>
+                                    <p class="text-sm font-medium text-slate-700 dark:text-slate-200 select-all"><?= htmlspecialchars($sim['invoice_number'] ?: '-') ?></p>
                                 </div>
                             </div>
                         </div>
@@ -228,25 +247,35 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                         <div class="bg-white dark:bg-darkcard rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 p-6 md:p-8 relative overflow-hidden">
                             <div class="absolute -right-20 -top-20 w-64 h-64 bg-primary/5 rounded-full blur-3xl pointer-events-none"></div>
 
-                            <div class="flex justify-between items-start mb-8 relative z-10">
+                            <div class="flex flex-col sm:flex-row justify-between items-start mb-8 relative z-10 gap-4">
                                 <div>
                                     <h3 class="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
                                         <i class="ph-fill ph-chart-donut text-primary text-2xl"></i> Usage Analytics
                                     </h3>
                                     <p class="text-xs text-slate-500 mt-1">Last Update: <strong class="text-slate-700 dark:text-slate-300"><?= $last_update ?></strong></p>
                                 </div>
-                                <div class="text-right">
-                                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Status</p>
-                                    <div class="<?= $textColor ?> font-extrabold text-3xl drop-shadow-sm flex items-center justify-end gap-1">
-                                        <?= number_format($pct_display, 1) ?>%
+                                <div class="flex items-end gap-6 text-right">
+                                    <div class="text-left">
+                                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Unit</p>
+                                        <select id="detailUnitSelector" onchange="updateUsageUnits()" class="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-primary cursor-pointer transition-all">
+                                            <option value="KB">KB</option>
+                                            <option value="MB" selected>MB</option>
+                                            <option value="GB">GB</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Status</p>
+                                        <div class="<?= $textColor ?> font-extrabold text-3xl drop-shadow-sm flex items-center justify-end gap-1 leading-none">
+                                            <?= number_format($pct_display, 1) ?>%
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
                             <div class="mb-10 relative z-10">
                                 <div class="flex justify-between text-xs font-bold text-slate-500 mb-2">
-                                    <span>0 MB</span>
-                                    <span><?= formatBytesMB($totalFlow) ?></span>
+                                    <span>0 <span class="unit-label">MB</span></span>
+                                    <span class="dynamic-val" data-bytes="<?= $totalFlow ?>"><?= formatBytesMB($totalFlow) ?></span>
                                 </div>
                                 <div class="w-full h-4 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
                                     <div class="h-full <?= $barColor ?> shadow-[0_0_15px] <?= $glowColor ?> rounded-full relative animate-progress-fill" style="width: <?= $pct_display ?>%;">
@@ -259,17 +288,17 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                 <div class="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-5 border border-slate-100 dark:border-slate-700">
                                     <i class="ph ph-database text-2xl text-slate-400 mb-2"></i>
                                     <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Package</p>
-                                    <p class="text-xl font-bold text-slate-800 dark:text-white mt-1"><?= formatBytesMB($totalFlow) ?></p>
+                                    <p class="text-xl font-bold text-slate-800 dark:text-white mt-1 dynamic-val" data-bytes="<?= $totalFlow ?>"><?= formatBytesMB($totalFlow) ?></p>
                                 </div>
                                 <div class="bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl p-5 border border-indigo-100 dark:border-indigo-800/50">
                                     <i class="ph ph-trend-up text-2xl text-primary mb-2"></i>
                                     <p class="text-[10px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest">Total Used</p>
-                                    <p class="text-xl font-bold text-primary dark:text-indigo-300 mt-1"><?= formatBytesMB($usedFlow) ?></p>
+                                    <p class="text-xl font-bold text-primary dark:text-indigo-300 mt-1 dynamic-val" data-bytes="<?= $usedFlow ?>"><?= formatBytesMB($usedFlow) ?></p>
                                 </div>
-                                <div class="bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl p-5 border border-emerald-100 dark:border-emerald-800/50">
-                                    <i class="ph ph-check-circle text-2xl text-emerald-500 mb-2"></i>
-                                    <p class="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Remaining</p>
-                                    <p class="text-xl font-bold text-emerald-700 dark:text-emerald-300 mt-1"><?= formatBytesMB($remainingFlow) ?></p>
+                                <div class="rounded-2xl p-5 border <?= $cardColor ?>">
+                                    <i class="ph ph-check-circle text-2xl mb-2"></i>
+                                    <p class="text-[10px] font-bold uppercase tracking-widest opacity-80">Remaining</p>
+                                    <p class="text-xl font-bold mt-1 dynamic-val" data-bytes="<?= $remainingFlow ?>"><?= formatBytesMB($remainingFlow) ?></p>
                                 </div>
                             </div>
                         </div>
@@ -300,7 +329,7 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                                             <div>
                                                 <p class="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                                                    <?= formatBytesMB($used) ?> 
+                                                    <span class="dynamic-val" data-bytes="<?= $used ?>"><?= formatBytesMB($used) ?></span>
                                                     <?php if($isLatest): ?>
                                                         <span class="text-[9px] bg-primary text-white px-1.5 py-0.5 rounded uppercase tracking-wider">Latest</span>
                                                     <?php endif; ?>
@@ -334,6 +363,39 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
             100% { transform: translateX(100%); }
         }
     </style>
+    
+    <script>
+        // FUNGSI UNTUK KONVERSI UNIT DINAMIS
+        function updateUsageUnits() {
+            const unit = document.getElementById('detailUnitSelector').value;
+            const elements = document.querySelectorAll('.dynamic-val');
+            const unitLabels = document.querySelectorAll('.unit-label');
+            
+            // Update labels (seperti tulisan "0 MB" di progress bar)
+            unitLabels.forEach(lbl => {
+                lbl.innerText = unit;
+            });
+
+            elements.forEach(el => {
+                const rawBytes = parseFloat(el.getAttribute('data-bytes'));
+                if(isNaN(rawBytes)) return;
+
+                // Hitung Basis MB standar (1024^2 = 1048576)
+                const baseMB = rawBytes / 1048576; 
+
+                let val = 0;
+                if(unit === 'KB') {
+                    val = baseMB * 1000;
+                } else if(unit === 'MB') {
+                    val = baseMB;
+                } else if(unit === 'GB') {
+                    val = baseMB / 1000;
+                }
+
+                el.innerText = val.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ' + unit;
+            });
+        }
+    </script>
     <script src="assets/js/main.js"></script>
 </body>
 </html>
