@@ -2,10 +2,12 @@
 include 'config.php';
 checkLogin();
 
-// Hanya Superadmin/Admin yang boleh kelola API
-if (!in_array($_SESSION['role'], ['superadmin', 'admin'])) {
-    header("Location: dashboard.php"); exit();
-}
+// // Hanya Superadmin/Admin yang boleh kelola API
+// if (!in_array($_SESSION['role'], ['superadmin', 'admin'])) {
+//     header("Location: dashboard.php"); exit();
+// }
+
+enforcePermission('settings');
 
 $msg = ''; $msg_type = '';
 
@@ -79,6 +81,7 @@ $available_users = $conn->query($sql_users);
     <title>API Management</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@phosphor-icons/web@2.0.3"></script>
+    <link rel="stylesheet" href="assets/css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script>
         tailwind.config = { darkMode: 'class', theme: { extend: { fontFamily: { sans: ['Plus Jakarta Sans', 'sans-serif'] }, colors: { primary: '#4F46E5', darkcard: '#1E293B', darkbg: '#0F172A' }, animation: { 'fade-in-up': 'fadeInUp 0.3s ease-out forwards' }, keyframes: { fadeInUp: { '0%': { opacity: '0', transform: 'translateY(10px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } } } } } }
@@ -250,5 +253,6 @@ $available_users = $conn->query($sql_users);
             });
         }
     </script>
+    <script src="assets/js/main.js"></script>
 </body>
 </html>
