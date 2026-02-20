@@ -5,9 +5,9 @@ enforcePermission('sim_list');
 
 // --- 1. PREPARATION & HELPER ---
 $user_id = $_SESSION['user_id'];
-$iccid_req = $conn->real_escape_string($_GET['iccid'] ?? '');
+$id_req = intval($_GET['id'] ?? 0);
 
-if (empty($iccid_req)) {
+if (empty($id_req)) {
     header("Location: sim-list.php");
     exit();
 }
@@ -28,10 +28,11 @@ if ($allowed_comps === 'NONE') {
 } 
 
 // --- 3. FETCH SIM DATA ---
+// MENGGUNAKAN ID BUKAN ICCID
 $sql = "SELECT sims.*, companies.company_name, companies.level 
         FROM sims 
         LEFT JOIN companies ON sims.company_id = companies.id 
-        WHERE sims.iccid = '$iccid_req' $company_condition LIMIT 1";
+        WHERE sims.id = $id_req $company_condition LIMIT 1";
 $result = $conn->query($sql);
 
 if ($result->num_rows === 0) {
@@ -74,8 +75,15 @@ if ($percentage >= 90) {
 }
 
 // --- 4. FETCH HISTORY DATA ---
-$msisdn_safe = $conn->real_escape_string($sim['msisdn']);
-$histSql = "SELECT used_flow, recorded_at FROM sim_usage_history WHERE iccid = '$iccid_req' OR msisdn = '$msisdn_safe' ORDER BY recorded_at DESC LIMIT 20";
+$msisdn_safe = $conn->real_escape_string($sim['msisdn'] ?? '');
+$iccid_safe = $conn->real_escape_string($sim['iccid'] ?? '');
+
+$histCond = "msisdn = '$msisdn_safe'";
+if (!empty($iccid_safe)) {
+    $histCond .= " OR iccid = '$iccid_safe'";
+}
+
+$histSql = "SELECT used_flow, recorded_at FROM sim_usage_history WHERE $histCond ORDER BY recorded_at DESC LIMIT 20";
 $histRes = $conn->query($histSql);
 $history = [];
 while ($h = $histRes->fetch_assoc()) {
@@ -88,7 +96,7 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>SIM Detail - <?= htmlspecialchars($sim['msisdn'] ?? $sim['iccid']) ?></title>
+    <title>SIM Detail - <?= htmlspecialchars($sim['msisdn'] ?? $sim['iccid'] ?? 'Unknown') ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@phosphor-icons/web@2.0.3"></script>
     <link rel="stylesheet" href="assets/css/style.css">
@@ -261,7 +269,7 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                             <div class="space-y-1.5">
                                                 <div>
                                                     <p class="text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-0.5">MSISDN</p>
-                                                    <p class="text-sm font-mono font-bold tracking-wider text-slate-700 dark:text-white select-all"><?= htmlspecialchars($sim['msisdn'] ?: 'UNKNOWN') ?></p>
+                                                    <p class="text-sm font-mono font-bold tracking-wider text-slate-700 dark:text-white select-all"><?= htmlspecialchars($sim['msisdn'] ?? 'UNKNOWN') ?></p>
                                                 </div>
                                             </div>
                                         </div>
@@ -278,9 +286,9 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                             </div>
                                         </div>
 
-                                        <div class="absolute right-6 top-[55%] -translate-y-1/2 w-[90px] h-[55px] border-2 border-slate-200 rounded-lg flex items-center p-2 shadow-inner">
+                                        <div class="absolute right-6 top-[55%] -translate-y-1/2 w-[90px] h-[55px] border-2 border-slate-200 rounded-lg flex items-center p-2 shadow-inner bg-white">
                                             <div class="text-[7px] font-mono leading-tight text-slate-500 select-all pr-2 border-r border-slate-200 w-1/2 break-all">
-                                                <?= wordwrap(htmlspecialchars($sim['iccid']), 4, "<br>", true) ?>
+                                                <?= wordwrap(htmlspecialchars($sim['iccid'] ?? '-'), 4, "<br>", true) ?>
                                             </div>
                                             <div class="pl-2 w-1/2">
                                                 <p class="text-tselred font-bold text-[6px] leading-none mb-0.5">Telkomsel</p>
@@ -291,7 +299,7 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                         <div class="absolute left-5 top-5 bottom-5 w-[160px] flex flex-col justify-center gap-2">
                                             <div class="bg-slate-50 border border-slate-100 p-2.5 rounded-lg shadow-sm">
                                                 <p class="text-[7px] text-slate-400 font-bold uppercase tracking-wider mb-1">Customer</p>
-                                                <p class="text-[10px] font-bold text-slate-800 leading-tight break-words line-clamp-2">
+                                                <p class="text-[10px] font-bold text-slate-800 leading-snug break-words line-clamp-2">
                                                     <?= htmlspecialchars($sim['company_name'] ?? 'Unknown Company') ?>
                                                 </p>
                                             </div>
@@ -299,7 +307,7 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                             <div class="bg-slate-50 border border-slate-100 p-2.5 rounded-lg shadow-sm">
                                                 <p class="text-[7px] text-slate-400 font-bold uppercase tracking-wider mb-1">MSISDN</p>
                                                 <p class="text-[11px] font-mono font-bold text-slate-800 truncate select-all">
-                                                    <?= htmlspecialchars($sim['msisdn']) ?>
+                                                    <?= htmlspecialchars($sim['msisdn'] ?? '-') ?>
                                                 </p>
                                             </div>
                                             
@@ -318,21 +326,21 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                                     <div class="w-32 h-6 barcode-stripes opacity-40"></div>
                                                     <span class="text-[10px] font-mono text-slate-400 select-all mt-1"><?= htmlspecialchars($sim['sn'] ?: 'NO-SN-DATA') ?></span>
                                                 </div>
-                                                <span class="text-[10px] font-mono text-slate-400 select-all bg-slate-200 dark:bg-slate-800 px-2 rounded"><?= htmlspecialchars($sim['iccid']) ?></span>
+                                                <span class="text-[10px] font-mono text-slate-400 select-all bg-slate-200 dark:bg-slate-800 px-2 rounded"><?= htmlspecialchars($sim['iccid'] ?? '-') ?></span>
                                             </div>
                                             <div class="flex flex-col gap-2">
-                                                <div class="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                                                <div class="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
                                                     <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Customer</p>
                                                     <p class="text-[11px] font-bold text-slate-800 dark:text-white leading-tight break-words line-clamp-1"><?= htmlspecialchars($sim['company_name'] ?? 'Unknown Company') ?></p>
                                                 </div>
                                                 <div class="grid grid-cols-2 gap-2">
-                                                    <div class="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                                                    <div class="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
                                                         <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">MSISDN</p>
-                                                        <p class="text-[11px] font-mono font-bold text-slate-800 dark:text-white select-all"><?= htmlspecialchars($sim['msisdn']) ?></p>
+                                                        <p class="text-[11px] font-mono font-bold text-slate-800 dark:text-white select-all"><?= htmlspecialchars($sim['msisdn'] ?? '-') ?></p>
                                                     </div>
-                                                    <div class="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-right">
-                                                        <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Package</p>
-                                                        <p class="text-[11px] font-bold text-primary dynamic-val" data-bytes="<?= $totalFlow ?>"><?= formatBytesMB($totalFlow) ?></p>
+                                                    <div class="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/50 p-2.5 rounded-xl text-right shadow-sm">
+                                                        <p class="text-[8px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider mb-0.5">Package</p>
+                                                        <p class="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 dynamic-val" data-bytes="<?= $totalFlow ?>"><?= formatBytesMB($totalFlow) ?></p>
                                                     </div>
                                                 </div>
                                             </div>
