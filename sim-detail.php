@@ -12,7 +12,6 @@ if (empty($iccid_req)) {
     exit();
 }
 
-// Fungsi format bytes untuk fallback awal sebelum ditimpa JS
 function formatBytesMB($bytes) { 
     if ($bytes <= 0) return '0.00 MB';
     return number_format($bytes / 1048576, 2) . ' MB';
@@ -42,6 +41,13 @@ if ($result->num_rows === 0) {
 
 $sim = $result->fetch_assoc();
 
+// Cek apakah ini Telkomsel Halo
+$isHalo = false;
+$cardType = strtolower($sim['card_type'] ?? '');
+if (strpos($cardType, 'halo') !== false || strpos($cardType, 'telkomsel') !== false) {
+    $isHalo = true;
+}
+
 // Hitung Usage & Persentase
 $totalFlow = floatval($sim['total_flow']);
 $usedFlow = floatval($sim['used_flow']);
@@ -50,11 +56,11 @@ $remainingFlow = max(0, $totalFlow - $usedFlow);
 $percentage = ($totalFlow > 0) ? ($usedFlow / $totalFlow) * 100 : 0;
 $pct_display = min(100, $percentage);
 
-// Tentukan warna Bar berdasarkan Persentase
+// Tentukan warna Bar
 $barColor = 'bg-emerald-500';
 $glowColor = 'shadow-emerald-500/50';
 $textColor = 'text-emerald-500';
-$cardColor = 'bg-emerald-50 border-emerald-200 text-emerald-700'; // Untuk card remaining
+$cardColor = 'bg-emerald-50 border-emerald-200 text-emerald-700';
 if ($percentage >= 90) {
     $barColor = 'bg-red-500';
     $glowColor = 'shadow-red-500/50';
@@ -96,7 +102,7 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                         sans: ['Plus Jakarta Sans', 'sans-serif'],
                         mono: ['JetBrains Mono', 'monospace']
                     },
-                    colors: { primary: '#4F46E5', darkcard: '#1E293B', darkbg: '#0F172A' },
+                    colors: { primary: '#4F46E5', darkcard: '#1E293B', darkbg: '#0F172A', tselred: '#E02020' },
                     animation: { 
                         'fade-in-up': 'fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
                         'progress-fill': 'progressFill 1.5s cubic-bezier(0.16, 1, 0.3, 1) forwards'
@@ -110,9 +116,6 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
         }
     </script>
     <style>
-        .sim-chip-gradient {
-            background: linear-gradient(135deg, #FDE68A 0%, #D97706 100%);
-        }
         .timeline-dot::before {
             content: ''; position: absolute; left: 5px; top: 24px; bottom: -24px; width: 2px;
             background-color: #E2E8F0; z-index: 0;
@@ -120,12 +123,37 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
         .dark .timeline-dot::before { background-color: #334155; }
         .timeline-item:last-child .timeline-dot::before { display: none; }
         
-        /* Pattern for SIM Chip */
+        /* === 3D FLIP CARD LOGIC === */
+        .scene { perspective: 1500px; width: 100%; aspect-ratio: 1.58 / 1; max-width: 420px; margin: 0 auto; cursor: pointer; }
+        .card-container {
+            width: 100%; height: 100%; position: relative;
+            transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform-style: preserve-3d;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.15);
+            border-radius: 20px;
+        }
+        .scene.is-flipped .card-container { transform: rotateY(180deg); box-shadow: 0 15px 35px rgba(0,0,0,0.2); }
+        
+        .card-face {
+            position: absolute; width: 100%; height: 100%;
+            -webkit-backface-visibility: hidden; backface-visibility: hidden;
+            border-radius: 20px; overflow: hidden;
+        }
+        .card-front { background-color: #ffffff; }
+        .card-back { background-color: #ffffff; transform: rotateY(180deg); }
+
+        /* General SIM Styling */
+        .sim-chip-gradient { background: linear-gradient(135deg, #FCE69B 0%, #D99532 100%); }
         .chip-lines {
-            background-image: 
-                linear-gradient(90deg, rgba(180,83,9,0.3) 1px, transparent 1px),
-                linear-gradient(0deg, rgba(180,83,9,0.3) 1px, transparent 1px);
-            background-size: 15px 15px;
+            background-image: linear-gradient(90deg, rgba(160,80,10,0.3) 1px, transparent 1px),
+                              linear-gradient(0deg, rgba(160,80,10,0.3) 1px, transparent 1px);
+            background-size: 16px 16px;
+        }
+        .cut-line { stroke-dasharray: 6 4; stroke: #cbd5e1; stroke-width: 2; fill: none; }
+        
+        /* Barcode Generator (CSS Only) */
+        .barcode-stripes {
+            background-image: repeating-linear-gradient(90deg, #1e293b, #1e293b 2px, transparent 2px, transparent 4px, #1e293b 4px, #1e293b 5px, transparent 5px, transparent 8px, #1e293b 8px, #1e293b 12px, transparent 12px, transparent 14px);
         }
     </style>
 </head>
@@ -159,36 +187,136 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                     
                     <div class="lg:col-span-4 space-y-8 animate-fade-in-up" style="animation-delay: 0.1s;">
                         
-                        <div class="relative w-full aspect-[1.58/1] max-w-[400px] mx-auto bg-[#F8FAFC] dark:bg-slate-200 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-200 overflow-hidden transform transition-transform hover:scale-105 duration-500 group flex items-center">
-                            
-                            <div class="absolute left-6 top-1/2 -translate-y-1/2 w-[110px] h-[85px] border-[3px] border-slate-400/50 rounded-xl border-dashed"></div>
+                        <div class="scene" id="simCard3D" onclick="this.classList.toggle('is-flipped')">
+                            <div class="card-container">
+                                
+                                <div class="card-face card-front border border-slate-200 dark:border-slate-700 relative <?= $isHalo ? 'bg-white' : 'bg-slate-50 dark:bg-slate-800' ?>">
+                                    
+                                    <?php if($isHalo): ?>
+                                        <div class="absolute -right-8 top-1/2 -translate-y-1/2 opacity-[0.03] scale-150 pointer-events-none">
+                                            <svg width="200" height="200" viewBox="0 0 100 100"><path d="M50 0 Q100 50 50 100 Q0 50 50 0" fill="#000"/></svg>
+                                        </div>
+                                        <div class="absolute -right-4 top-1/2 -translate-y-1/2 opacity-[0.06] scale-125 pointer-events-none">
+                                            <svg width="200" height="200" viewBox="0 0 100 100"><path d="M50 0 Q100 50 50 100 Q0 50 50 0" fill="#000"/></svg>
+                                        </div>
 
-                            <div class="absolute left-[33px] top-1/2 -translate-y-1/2 z-10 w-24 h-16 sim-chip-gradient rounded-md shadow-sm border border-amber-600/40 overflow-hidden flex">
-                                <div class="w-full h-full chip-lines relative">
-                                    <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 border border-amber-700/30 rounded-full"></div>
-                                    <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-px bg-amber-700/30"></div>
+                                        <svg class="absolute left-5 top-1/2 -translate-y-1/2 w-[120px] h-[90px]" style="z-index: 1;">
+                                            <rect x="2" y="2" width="116" height="86" rx="12" class="cut-line" />
+                                            <path d="M 118 65 L 95 88" stroke="#cbd5e1" stroke-width="2" fill="none" stroke-dasharray="6 4"/>
+                                        </svg>
+
+                                        <div class="absolute left-[34px] top-1/2 -translate-y-1/2 z-10 w-[70px] h-[54px] sim-chip-gradient rounded-md border border-amber-600/40 overflow-hidden shadow-sm flex items-center justify-center">
+                                            <div class="w-full h-full chip-lines relative">
+                                                <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 border border-amber-800/20 rounded-full"></div>
+                                                <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-px bg-amber-800/20"></div>
+                                                <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-full w-px bg-amber-800/20"></div>
+                                            </div>
+                                        </div>
+
+                                        <div class="absolute bottom-5 left-6 z-10">
+                                            <p class="text-tselred font-bold text-sm tracking-tight leading-none mb-0.5">Telkomsel</p>
+                                            <p class="text-tselred font-extrabold text-3xl tracking-tighter leading-none">Halo</p>
+                                        </div>
+                                        
+                                        <div class="absolute top-4 right-5 opacity-40 flex items-center gap-1.5 animate-pulse">
+                                            <i class="ph ph-hand-tap text-lg"></i>
+                                            <span class="text-[8px] font-bold uppercase tracking-widest">Flip</span>
+                                        </div>
+
+                                    <?php else: ?>
+                                        <div class="absolute left-6 top-1/2 -translate-y-1/2 w-[110px] h-[85px] border-[3px] border-slate-300 dark:border-slate-600 rounded-xl border-dashed"></div>
+                                        <div class="absolute left-[33px] top-1/2 -translate-y-1/2 z-10 w-24 h-16 sim-chip-gradient rounded-md shadow-sm border border-amber-600/40 overflow-hidden">
+                                            <div class="w-full h-full chip-lines relative">
+                                                <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 border border-amber-700/30 rounded-full"></div>
+                                            </div>
+                                        </div>
+                                        <div class="absolute right-6 top-6 bottom-6 flex flex-col justify-between text-right z-10 w-1/2">
+                                            <div>
+                                                <span class="inline-block px-2.5 py-1 bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 font-bold text-[9px] uppercase tracking-widest rounded-md shadow-sm">
+                                                    <?= htmlspecialchars($sim['card_type'] ?: 'STANDARD SIM') ?>
+                                                </span>
+                                            </div>
+                                            <div class="space-y-1.5">
+                                                <div>
+                                                    <p class="text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-0.5">MSISDN</p>
+                                                    <p class="text-sm font-mono font-bold tracking-wider text-slate-700 dark:text-white select-all"><?= htmlspecialchars($sim['msisdn'] ?: 'UNKNOWN') ?></p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="absolute bottom-0 right-0 w-32 h-32 bg-primary/10 rounded-tl-full blur-2xl pointer-events-none"></div>
+                                    <?php endif; ?>
+                                </div>
+
+                                <div class="card-face card-back border border-slate-200 dark:border-slate-700 relative <?= $isHalo ? 'bg-white' : 'bg-slate-100 dark:bg-slate-900' ?>">
+                                    <?php if($isHalo): ?>
+                                        <div class="absolute top-4 left-5">
+                                            <p class="text-[11px] text-slate-600 font-medium">Call center <span class="bg-slate-500 text-white px-1.5 py-0.5 rounded-full font-bold text-[9px]">188</span></p>
+                                            <p class="text-[10px] text-slate-500">www.telkomsel.com/halo</p>
+                                        </div>
+
+                                        <div class="absolute top-5 right-5 w-[140px] h-[18px] barcode-stripes opacity-70"></div>
+                                        <div class="absolute top-10 right-5 w-[140px] text-center tracking-widest font-mono text-[8px] text-slate-500"><?= htmlspecialchars($sim['iccid']) ?></div>
+
+                                        <div class="absolute right-8 top-1/2 -translate-y-1/2 w-[100px] h-[60px] border-2 border-slate-200 rounded-lg flex items-center p-2 shadow-inner">
+                                            <div class="text-[8px] font-mono leading-tight text-slate-500 select-all pr-2 border-r border-slate-200 w-1/2 break-all">
+                                                <?= wordwrap(htmlspecialchars($sim['iccid']), 4, "<br>", true) ?>
+                                            </div>
+                                            <div class="pl-2 w-1/2">
+                                                <p class="text-tselred font-bold text-[7px] leading-none mb-0.5">Telkomsel</p>
+                                                <p class="text-tselred font-extrabold text-sm leading-none tracking-tight">Halo</p>
+                                            </div>
+                                        </div>
+
+                                        <div class="absolute left-5 top-1/2 -translate-y-1/2 w-[180px] space-y-2">
+                                            <div class="bg-slate-50 border border-slate-100 p-2 rounded-lg">
+                                                <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Customer</p>
+                                                <p class="text-[11px] font-bold text-slate-800 leading-tight truncate"><?= htmlspecialchars($sim['company_name'] ?? 'Unknown Company') ?></p>
+                                            </div>
+                                            <div class="bg-slate-50 border border-slate-100 p-2 rounded-lg flex justify-between items-center">
+                                                <div>
+                                                    <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">MSISDN</p>
+                                                    <p class="text-xs font-mono font-bold text-slate-800"><?= htmlspecialchars($sim['msisdn']) ?></p>
+                                                </div>
+                                                <div class="text-right">
+                                                    <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Package</p>
+                                                    <p class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded dynamic-val" data-bytes="<?= $totalFlow ?>"><?= formatBytesMB($totalFlow) ?></p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="absolute bottom-3 left-5 right-5 flex justify-between items-end">
+                                            <p class="text-[7px] text-slate-400 leading-tight w-[60%]">
+                                                Dengan digunakannya kartu SIM ini, pengguna sepakat untuk tunduk kepada syarat dan ketentuan yang ditetapkan oleh Telkomsel dari waktu ke waktu.
+                                            </p>
+                                            <p class="text-[10px] font-bold text-slate-800">by Telkom Indonesia</p>
+                                        </div>
+
+                                    <?php else: ?>
+                                        <div class="p-6 h-full flex flex-col justify-between">
+                                            <div class="flex justify-between items-start">
+                                                <div class="w-32 h-6 barcode-stripes opacity-40"></div>
+                                                <span class="text-[10px] font-mono text-slate-400 select-all"><?= htmlspecialchars($sim['iccid']) ?></span>
+                                            </div>
+                                            <div class="space-y-2 bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+                                                <div>
+                                                    <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Customer</p>
+                                                    <p class="text-xs font-bold text-slate-800 dark:text-white truncate"><?= htmlspecialchars($sim['company_name'] ?? 'Unknown Company') ?></p>
+                                                </div>
+                                                <div class="flex justify-between">
+                                                    <div>
+                                                        <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider">MSISDN</p>
+                                                        <p class="text-xs font-mono font-bold text-slate-800 dark:text-white"><?= htmlspecialchars($sim['msisdn']) ?></p>
+                                                    </div>
+                                                    <div class="text-right">
+                                                        <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Package</p>
+                                                        <p class="text-xs font-bold text-primary dynamic-val" data-bytes="<?= $totalFlow ?>"><?= formatBytesMB($totalFlow) ?></p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
                             </div>
-
-                            <div class="absolute right-6 top-6 bottom-6 flex flex-col justify-between text-right text-slate-800 z-10 w-1/2">
-                                <div>
-                                    <span class="inline-block px-2.5 py-1 bg-primary text-white font-bold text-[9px] uppercase tracking-widest rounded-md shadow-sm mb-2">
-                                        <?= htmlspecialchars($sim['card_type'] ?: 'STANDARD SIM') ?>
-                                    </span>
-                                </div>
-                                <div class="space-y-1.5">
-                                    <div>
-                                        <p class="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-0.5">MSISDN</p>
-                                        <p class="text-sm font-mono font-bold tracking-wider text-slate-900 select-all"><?= htmlspecialchars($sim['msisdn'] ?: 'UNKNOWN') ?></p>
-                                    </div>
-                                    <div>
-                                        <p class="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-0.5">ICCID</p>
-                                        <p class="text-[10px] font-mono tracking-widest text-slate-700 select-all"><?= htmlspecialchars($sim['iccid'] ?: 'UNKNOWN') ?></p>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="absolute bottom-0 right-0 w-32 h-32 bg-blue-500/10 rounded-tl-full blur-2xl pointer-events-none"></div>
                         </div>
 
                         <div class="bg-white dark:bg-darkcard rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 p-6">
@@ -277,7 +405,7 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                     <span>0 <span class="unit-label">MB</span></span>
                                     <span class="dynamic-val" data-bytes="<?= $totalFlow ?>"><?= formatBytesMB($totalFlow) ?></span>
                                 </div>
-                                <div class="w-full h-4 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
+                                <div class="w-full h-4 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-200 dark:border-slate-700">
                                     <div class="h-full <?= $barColor ?> shadow-[0_0_15px] <?= $glowColor ?> rounded-full relative animate-progress-fill" style="width: <?= $pct_display ?>%;">
                                         <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full animate-[shimmer_2s_infinite]"></div>
                                     </div>
@@ -295,7 +423,7 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                     <p class="text-[10px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest">Total Used</p>
                                     <p class="text-xl font-bold text-primary dark:text-indigo-300 mt-1 dynamic-val" data-bytes="<?= $usedFlow ?>"><?= formatBytesMB($usedFlow) ?></p>
                                 </div>
-                                <div class="rounded-2xl p-5 border <?= $cardColor ?>">
+                                <div class="rounded-2xl p-5 border <?= $cardColor ?> bg-opacity-30 dark:bg-opacity-10">
                                     <i class="ph ph-check-circle text-2xl mb-2"></i>
                                     <p class="text-[10px] font-bold uppercase tracking-widest opacity-80">Remaining</p>
                                     <p class="text-xl font-bold mt-1 dynamic-val" data-bytes="<?= $remainingFlow ?>"><?= formatBytesMB($remainingFlow) ?></p>
@@ -365,13 +493,11 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
     </style>
     
     <script>
-        // FUNGSI UNTUK KONVERSI UNIT DINAMIS
         function updateUsageUnits() {
             const unit = document.getElementById('detailUnitSelector').value;
             const elements = document.querySelectorAll('.dynamic-val');
             const unitLabels = document.querySelectorAll('.unit-label');
             
-            // Update labels (seperti tulisan "0 MB" di progress bar)
             unitLabels.forEach(lbl => {
                 lbl.innerText = unit;
             });
@@ -380,7 +506,6 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                 const rawBytes = parseFloat(el.getAttribute('data-bytes'));
                 if(isNaN(rawBytes)) return;
 
-                // Hitung Basis MB standar (1024^2 = 1048576)
                 const baseMB = rawBytes / 1048576; 
 
                 let val = 0;
