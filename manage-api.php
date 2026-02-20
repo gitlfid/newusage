@@ -65,7 +65,7 @@ $keys = $conn->query($sql_keys);
 
 // Ambil daftar Users untuk Dropdown (Hanya user yang belum punya key aktif)
 // Agar rapi, kita filter di query SQL
-$sql_users = "SELECT id, username, email, role 
+$sql_users = "SELECT id, user_code, username, email, role 
               FROM users 
               WHERE id NOT IN (SELECT user_id FROM api_keys WHERE status = 1)
               ORDER BY username ASC";
@@ -199,7 +199,7 @@ $available_users = $conn->query($sql_users);
                         <option value="" disabled selected>-- Choose a User --</option>
                         <?php if($available_users->num_rows > 0): while($u = $available_users->fetch_assoc()): ?>
                             <option value="<?= $u['id'] ?>">
-                                <?= htmlspecialchars($u['username']) ?> (<?= ucfirst($u['role']) ?>) - <?= htmlspecialchars($u['email']) ?>
+                              [<?= htmlspecialchars($u['user_code']) ?>] <?= htmlspecialchars($u['username']) ?> - <?= htmlspecialchars($u['email']) ?>
                             </option>
                         <?php endwhile; else: ?>
                             <option value="" disabled>All users already have active keys.</option>
