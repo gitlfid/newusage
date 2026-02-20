@@ -299,10 +299,10 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                 </div>
 
                 <div class="relative z-10 bg-white dark:bg-darkcard p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 mb-6 animate-fade-in-up" style="animation-delay: 0.1s;">
-                    <form method="GET" id="filterForm" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-12 gap-3 items-end">
+                    <form method="GET" id="filterForm" class="flex flex-wrap gap-4 items-end">
                         <input type="hidden" name="size" value="<?= $pageSize ?>">
                         
-                        <div class="xl:col-span-2 lg:col-span-1">
+                        <div class="flex-grow min-w-[200px] max-w-[300px]">
                             <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Search (Multiple)</label>
                             <div class="relative group">
                                 <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors"></i>
@@ -310,7 +310,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                             </div>
                         </div>
 
-                        <div class="xl:col-span-2 lg:col-span-1">
+                        <div class="flex-grow min-w-[150px] max-w-[250px]">
                             <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Company</label>
                             <select name="company" onchange="this.form.submit()" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
                                 <option value="">All Companies</option>
@@ -320,9 +320,9 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                             </select>
                         </div>
                         
-                        <div class="xl:col-span-2 lg:col-span-1">
+                        <div class="flex-grow min-w-[120px] max-w-[200px]">
                             <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Batch</label>
-                            <select name="batch" class="w-full h-[30px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
+                            <select name="batch" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
                                 <option value="">All Batches</option>
                                 <?php foreach($batchArr as $b): ?>
                                     <option value="<?= htmlspecialchars($b) ?>" <?= $f_batch === $b ? 'selected' : '' ?>><?= htmlspecialchars($b) ?></option>
@@ -330,7 +330,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                             </select>
                         </div>
 
-                        <div class="xl:col-span-2 lg:col-span-1">
+                        <div class="flex-grow min-w-[120px] max-w-[200px]">
                             <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Invoice No</label>
                             <select name="invoice" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
                                 <option value="">All Invoices</option>
@@ -340,7 +340,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                             </select>
                         </div>
 
-                        <div class="xl:col-span-2 lg:col-span-1">
+                        <div class="min-w-[120px]">
                             <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Level</label>
                             <div class="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1 border border-slate-200 dark:border-slate-700 h-[42px]">
                                 <?php foreach(['' => 'All', '1'=>'L1', '2'=>'L2', '3'=>'L3'] as $val => $lbl): 
@@ -354,7 +354,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                             </div>
                         </div>
 
-                        <div class="xl:col-span-2 lg:col-span-1 flex items-center justify-end gap-2">
+                        <div class="flex items-center gap-2 ml-auto">
                             <div class="relative group">
                                 <button type="button" onclick="document.getElementById('colManager').classList.toggle('hidden')" class="h-[42px] px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 shadow-sm transition-colors flex items-center gap-2">
                                     <i class="ph ph-columns text-lg"></i> Cols
@@ -368,7 +368,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                 </div>
                             </div>
                             
-                            <div class="relative h-[42px] min-w-[80px]">
+                            <div class="relative h-[42px] w-[80px]">
                                 <select id="unitSelector" onchange="updateDataUnits()" class="appearance-none w-full h-full pl-3 pr-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-600 dark:text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none cursor-pointer">
                                     <option value="KB">KB</option>
                                     <option value="MB" selected>MB</option>
@@ -377,7 +377,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                 <i class="ph ph-caret-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
                             </div>
 
-                            <button type="submit" id="btnFilter" class="h-[42px] w-[42px] bg-primary hover:bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-500/20 flex items-center justify-center transition-all active:scale-95">
+                            <button type="submit" id="btnFilter" class="h-[42px] w-[42px] bg-primary hover:bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-500/20 flex items-center justify-center transition-all active:scale-95 flex-shrink-0">
                                 <i class="ph ph-funnel text-xl"></i>
                             </button>
                         </div>
@@ -396,7 +396,8 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                     <th data-col="msisdn" class="px-4 py-4">MSISDN</th>
                                     <th data-col="customer" class="px-4 py-4">Customer</th>
                                     <th data-col="level" class="px-4 py-4 text-center">Level</th>
-                                    <th data-col="batch" class="px-4 py-4">Batch</th> <th data-col="invoice" class="px-4 py-4">Invoice No</th>
+                                    <th data-col="batch" class="px-4 py-4">Batch</th>
+                                    <th data-col="invoice" class="px-4 py-4">Invoice No</th>
                                     <th data-col="project" class="px-4 py-4">Project</th>
                                     <th data-col="imsi" class="px-4 py-4">IMSI</th>
                                     <th data-col="iccid" class="px-4 py-4">ICCID</th>
@@ -650,7 +651,6 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
         }
 
         // --- 2. COLUMN LOGIC ---
-        // UPDATE: V9 untuk merefresh localstorage cache karena ada penambahan kolom Batch
         const CONFIG_KEY = 'simTableConfig_V9'; 
         const defaultConfig = [
             { id: 'checkbox', name: '', width: 50, frozen: true, visible: true },
@@ -658,7 +658,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
             { id: 'msisdn', name: 'MSISDN', width: 150, frozen: true, visible: true },
             { id: 'customer', name: 'Customer', width: 200, frozen: true, visible: true },
             { id: 'level', name: 'Level', width: 80, frozen: false, visible: true },
-            { id: 'batch', name: 'Batch', width: 120, frozen: false, visible: true }, // KOLOM BATCH BARU DIDAFTARKAN
+            { id: 'batch', name: 'Batch', width: 120, frozen: false, visible: true },
             { id: 'invoice', name: 'Invoice No', width: 120, frozen: false, visible: true },
             { id: 'project', name: 'Project', width: 140, frozen: false, visible: true },
             { id: 'imsi', name: 'IMSI', width: 140, frozen: false, visible: true },
