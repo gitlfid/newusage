@@ -120,7 +120,7 @@ $s_keyword = $_GET['search'] ?? '';
 $f_company = $_GET['company'] ?? '';
 $f_project = $_GET['project'] ?? '';
 $f_invoice = $_GET['invoice'] ?? '';
-$f_batch   = $_GET['batch'] ?? ''; // FILTER BATCH BARU
+$f_batch   = $_GET['batch'] ?? ''; 
 $f_level   = $_GET['level'] ?? '';
 
 $where = "WHERE 1=1 " . $company_condition;
@@ -146,7 +146,6 @@ if ($f_invoice) {
     $safeInv = $conn->real_escape_string($f_invoice);
     $where .= " AND sims.invoice_number = '$safeInv'";
 }
-// KONDISI FILTER BATCH BARU
 if ($f_batch) {
     $safeBatch = $conn->real_escape_string($f_batch);
     $where .= " AND sims.batch = '$safeBatch'";
@@ -188,7 +187,7 @@ $invSql .= " ORDER BY invoice_number DESC";
 $iQ = $conn->query($invSql);
 while($r = $iQ->fetch_assoc()) $invoiceArr[] = $r['invoice_number'];
 
-// FETCH BATCH BARU
+// FETCH BATCH
 $batchArr = [];
 $bSql = "SELECT DISTINCT batch FROM sims LEFT JOIN companies ON sims.company_id = companies.id WHERE batch IS NOT NULL AND batch != '' " . $company_condition;
 if ($f_company) {
@@ -386,7 +385,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
 
                 <div class="bg-white dark:bg-darkcard rounded-2xl shadow-lg shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 overflow-hidden animate-fade-in-up" style="animation-delay: 0.2s;">
                     <div class="overflow-x-auto relative">
-                        <table id="mainTable" class="w-full text-left border-collapse min-w-[1600px]">
+                        <table id="mainTable" class="w-full text-left border-collapse min-w-[1800px]">
                             <thead class="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 text-[11px] uppercase font-bold tracking-wider">
                                 <tr id="tableHeaderRow">
                                     <th data-col="checkbox" class="px-4 py-4 text-center border-r border-slate-100 dark:border-slate-700/50">
@@ -397,6 +396,8 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                     <th data-col="customer" class="px-4 py-4">Customer</th>
                                     <th data-col="level" class="px-4 py-4 text-center">Level</th>
                                     <th data-col="batch" class="px-4 py-4">Batch</th>
+                                    <th data-col="card_type" class="px-4 py-4">Card Type</th>
+                                    <th data-col="expired_date" class="px-4 py-4">Expired Date</th>
                                     <th data-col="invoice" class="px-4 py-4">Invoice No</th>
                                     <th data-col="project" class="px-4 py-4">Project</th>
                                     <th data-col="imsi" class="px-4 py-4">IMSI</th>
@@ -459,6 +460,22 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                         <?php endif; ?>
                                     </td>
 
+                                    <td data-col="card_type" class="px-4 py-3 text-slate-500 dark:text-slate-400">
+                                        <?php if(!empty($row['card_type'])): ?>
+                                            <span class="px-2 py-1 bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400 rounded font-medium text-[10px] border border-purple-200 dark:border-purple-800"><?= htmlspecialchars($row['card_type']) ?></span>
+                                        <?php else: ?>
+                                            -
+                                        <?php endif; ?>
+                                    </td>
+
+                                    <td data-col="expired_date" class="px-4 py-3 text-slate-500 dark:text-slate-400">
+                                        <?php if(!empty($row['expired_date'])): ?>
+                                            <span class="text-xs font-medium"><?= date('d M Y', strtotime($row['expired_date'])) ?></span>
+                                        <?php else: ?>
+                                            -
+                                        <?php endif; ?>
+                                    </td>
+
                                     <td data-col="invoice" class="px-4 py-3 text-slate-500 dark:text-slate-400"><?= $row['invoice_number'] ?? '-' ?></td>
                                     <td data-col="project" class="px-4 py-3">
                                         <div class="flex items-center gap-1.5 max-w-[140px]">
@@ -489,7 +506,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                     </td>
                                 </tr>
                                 <?php endwhile; else: ?>
-                                <tr><td colspan="14" class="py-12 text-center text-slate-500">No SIM cards found matching your filters.</td></tr>
+                                <tr><td colspan="16" class="py-12 text-center text-slate-500">No SIM cards found matching your filters.</td></tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
@@ -651,7 +668,8 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
         }
 
         // --- 2. COLUMN LOGIC ---
-        const CONFIG_KEY = 'simTableConfig_V9'; 
+        // UPDATE: V10 untuk merefresh localstorage cache karena ada penambahan Card Type dan Expired Date
+        const CONFIG_KEY = 'simTableConfig_V10'; 
         const defaultConfig = [
             { id: 'checkbox', name: '', width: 50, frozen: true, visible: true },
             { id: 'tags', name: 'Tags', width: 120, frozen: true, visible: true },
@@ -659,6 +677,8 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
             { id: 'customer', name: 'Customer', width: 200, frozen: true, visible: true },
             { id: 'level', name: 'Level', width: 80, frozen: false, visible: true },
             { id: 'batch', name: 'Batch', width: 120, frozen: false, visible: true },
+            { id: 'card_type', name: 'Card Type', width: 120, frozen: false, visible: true }, // KOLOM BARU
+            { id: 'expired_date', name: 'Expired Date', width: 130, frozen: false, visible: true }, // KOLOM BARU
             { id: 'invoice', name: 'Invoice No', width: 120, frozen: false, visible: true },
             { id: 'project', name: 'Project', width: 140, frozen: false, visible: true },
             { id: 'imsi', name: 'IMSI', width: 140, frozen: false, visible: true },
