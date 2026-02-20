@@ -125,11 +125,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         set_time_limit(0); 
         $token = getIndosatToken();
         if ($token) {
-            // Hanya ambil data Indosat sesuai hak akses user ini
-            $sql = "SELECT id, msisdn, total_flow, rollover_flow, used_flow FROM sims WHERE 1=1 $company_condition AND (msisdn LIKE '62815%' OR msisdn LIKE '62816%' OR msisdn LIKE '62856%' OR msisdn LIKE '62857%')";
+            $sql = "SELECT id, msisdn, total_flow, rollover_flow, used_flow, max_rollover, rollover_period FROM sims WHERE 1=1 $company_condition AND (msisdn LIKE '62815%' OR msisdn LIKE '62816%' OR msisdn LIKE '62856%' OR msisdn LIKE '62857%')";
             $res = $conn->query($sql);
-            $stmt = $conn->prepare("UPDATE sims SET total_flow=?, rollover_flow=?, used_flow=? WHERE id=?");
             
+            // Siapkan DB update termasuk logic max_rollover dan rollover_period bulanan
+            $stmt = $conn->prepare("UPDATE sims SET total_flow=?, rollover_flow=?, used_flow=?, max_rollover=?, rollover_period=? WHERE id=?");
+            
+            $currentMonth = date('Y-m'); // Penanda Bulan Berjalan
+
             while($row = $res->fetch_assoc()) {
                 $msisdn = $row['msisdn'];
                 $id = $row['id'];
@@ -137,6 +140,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $totalRaw = floatval($row['total_flow']);
                 $rolloverRaw = floatval($row['rollover_flow']);
                 $usedRaw = floatval($row['used_flow']);
+                $dbMaxRollover = floatval($row['max_rollover']);
+                $dbRolloverPeriod = $row['rollover_period'];
                 
                 $benefit = getIndosatBenefit($token, $msisdn);
                 $traffic = getIndosatTraffic($token, $msisdn);
@@ -164,7 +169,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     else $usedRaw = ($valUsage * 1000) * 1048576;
                 }
                 
-                $stmt->bind_param("dddi", $totalRaw, $rolloverRaw, $usedRaw, $id);
+                // LOGIKA: Reset jika awal bulan / simpan nilai tertinggi jika bulan masih sama
+                if ($dbRolloverPeriod !== $currentMonth) {
+                    $newMaxRollover = $rolloverRaw; // Reset ke data terkini
+                } else {
+                    $newMaxRollover = max($dbMaxRollover, $rolloverRaw); // Simpan angka tertinggi
+                }
+
+                $stmt->bind_param("ddddsi", $totalRaw, $rolloverRaw, $usedRaw, $newMaxRollover, $currentMonth, $id);
                 $stmt->execute();
             }
         }
@@ -504,8 +516,26 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                     
                                     $msisdn = $row['msisdn'] ?? '';
                                     $isIndosat = preg_match('/^(62815|62816|62856|62857)/', $msisdn);
+                                    
+                                    // LOGIKA DENOMINATOR (PENGGANTI TOTAL PACKAGE UNTUK USAGE)
+                                    $denominator = $totalRaw;
+                                    
+                                    if ($isIndosat) {
+                                        $currentMonth = date('Y-m');
+                                        $dbMaxRollover = floatval($row['max_rollover'] ?? 0);
+                                        $dbRolloverPeriod = $row['rollover_period'] ?? '';
+                                        
+                                        // Auto reset (hanya di sisi UI) jika periode bulanan sudah berganti. 
+                                        // Saat nanti API disinkronisasi, data DB akan ikut menyesuaikan ke rollover terkini.
+                                        $effectiveMaxRollover = ($dbRolloverPeriod === $currentMonth) ? max($dbMaxRollover, $rolloverRaw) : $rolloverRaw;
+                                        
+                                        // Gunakan max rollover sebagai penyebut di kolom Usage
+                                        if ($effectiveMaxRollover > 0) {
+                                            $denominator = $effectiveMaxRollover;
+                                        }
+                                    }
 
-                                    $pct = ($totalRaw > 0) ? ($usedRaw / $totalRaw) * 100 : 0;
+                                    $pct = ($denominator > 0) ? ($usedRaw / $denominator) * 100 : 0;
                                     $barColor = ($pct > 90) ? 'bg-red-500' : (($pct > 70) ? 'bg-yellow-500' : 'bg-emerald-500');
                                 ?>
                                 <tr class="group hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors duration-200">
@@ -532,7 +562,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                         </div>
                                     </td>
                                     <td data-col="msisdn" class="px-4 py-3 font-mono font-bold text-primary dark:text-indigo-400 select-all">
-                                        <a href="sim-detail?id=<?= $row_id ?>" class="hover:underline">
+                                        <a href="sim-detail.php?id=<?= $row_id ?>" class="hover:underline">
                                             <?= htmlspecialchars($row['msisdn'] ?? '-') ?>
                                         </a>
                                     </td>
@@ -596,7 +626,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                         <div class="w-full">
                                             <div class="flex justify-between items-end mb-1">
                                                 <span class="text-xs font-bold text-slate-700 dark:text-slate-200 dynamic-data whitespace-nowrap" data-bytes="<?= $usedRaw ?>"><?= formatToDefaultMB($usedRaw) ?></span>
-                                                <span class="text-[10px] text-slate-400 font-medium whitespace-nowrap">/ <span class="dynamic-data" data-bytes="<?= $totalRaw ?>"><?= formatToDefaultMB($totalRaw) ?></span></span>
+                                                <span class="text-[10px] text-slate-400 font-medium whitespace-nowrap">/ <span class="dynamic-data" data-bytes="<?= $denominator ?>"><?= formatToDefaultMB($denominator) ?></span></span>
                                             </div>
                                             <div class="h-1.5 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden border border-slate-200 dark:border-slate-600">
                                                 <div class="h-full <?= $barColor ?> rounded-full" style="width: <?= min($pct, 100) ?>%"></div>
@@ -604,7 +634,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                         </div>
                                     </td>
                                     <td data-col="action" class="px-4 py-3 text-center">
-                                        <a href="sim-detail?id=<?= $row_id ?>" class="p-2 rounded-lg text-slate-400 hover:text-primary hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-all inline-block"><i class="ph ph-caret-right text-lg"></i></a>
+                                        <a href="sim-detail.php?id=<?= $row_id ?>" class="p-2 rounded-lg text-slate-400 hover:text-primary hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-all inline-block"><i class="ph ph-caret-right text-lg"></i></a>
                                     </td>
                                 </tr>
                                 <?php endwhile; else: ?>
@@ -768,7 +798,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
         }
 
         // --- 2. COLUMN LOGIC ---
-        const CONFIG_KEY = 'simTableConfig_V11'; 
+        const CONFIG_KEY = 'simTableConfig_V12'; 
         const defaultConfig = [
             { id: 'checkbox', name: '', width: 50, frozen: true, visible: true },
             { id: 'tags', name: 'Tags', width: 120, frozen: true, visible: true },
@@ -784,7 +814,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
             { id: 'iccid', name: 'ICCID', width: 160, frozen: false, visible: true },
             { id: 'sn', name: 'SN', width: 100, frozen: false, visible: true },
             { id: 'package', name: 'Package', width: 180, frozen: false, visible: true }, 
-            { id: 'rollover', name: 'Data Rollover', width: 140, frozen: false, visible: true }, // NEW COLUMN
+            { id: 'rollover', name: 'Data Rollover', width: 140, frozen: false, visible: true },
             { id: 'usage', name: 'Usage', width: 200, frozen: false, visible: true },
             { id: 'action', name: 'Action', width: 80, frozen: false, visible: true }
         ];
@@ -1048,7 +1078,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
         if(urlParams.get('msg') === 'tags_updated') showToast('Tags updated successfully.');
         if(urlParams.get('msg') === 'project_updated') showToast('Project updated successfully.');
         if(urlParams.get('msg') === 'transfer_success') showToast('SIM cards transferred successfully.');
-        if(urlParams.get('msg') === 'api_synced') showToast('Indosat API data synced successfully.'); // NEW
+        if(urlParams.get('msg') === 'api_synced') showToast('Indosat API data synced successfully.');
 
         function changePageSize(size) {
             const url = new URL(window.location.href); url.searchParams.set('size', size); url.searchParams.set('page', 1); window.location.href = url.toString();
