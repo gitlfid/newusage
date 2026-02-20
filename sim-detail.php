@@ -124,23 +124,45 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
         .timeline-item:last-child .timeline-dot::before { display: none; }
         
         /* === 3D FLIP CARD LOGIC === */
-        .scene { perspective: 1500px; width: 100%; aspect-ratio: 1.58 / 1; max-width: 420px; margin: 0 auto; cursor: pointer; }
+        .scene { 
+            perspective: 1500px; 
+            width: 100%; 
+            aspect-ratio: 1.58 / 1; 
+            max-width: 420px; 
+            margin: 0 auto; 
+            cursor: pointer; 
+        }
         .card-container {
-            width: 100%; height: 100%; position: relative;
+            width: 100%; 
+            height: 100%; 
+            position: relative;
             transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             transform-style: preserve-3d;
             box-shadow: 0 15px 35px rgba(0,0,0,0.15);
             border-radius: 20px;
         }
-        .scene.is-flipped .card-container { transform: rotateY(180deg); box-shadow: 0 15px 35px rgba(0,0,0,0.2); }
+        .scene.is-flipped .card-container { 
+            transform: rotateY(180deg); 
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2); 
+        }
         
         .card-face {
-            position: absolute; width: 100%; height: 100%;
-            -webkit-backface-visibility: hidden; backface-visibility: hidden;
-            border-radius: 20px; overflow: hidden;
+            position: absolute; 
+            width: 100%; 
+            height: 100%;
+            top: 0; /* Penting untuk mencegah overflow ke bawah */
+            left: 0; /* Penting untuk mencegah overflow ke kanan */
+            -webkit-backface-visibility: hidden; 
+            backface-visibility: hidden;
+            border-radius: 20px; 
+            overflow: hidden;
         }
-        .card-front { background-color: #ffffff; }
-        .card-back { background-color: #ffffff; transform: rotateY(180deg); }
+        .card-front { 
+            transform: rotateY(0deg); 
+        }
+        .card-back { 
+            transform: rotateY(180deg); 
+        }
 
         /* General SIM Styling */
         .sim-chip-gradient { background: linear-gradient(135deg, #FCE69B 0%, #D99532 100%); }
@@ -190,7 +212,7 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                         <div class="scene" id="simCard3D" onclick="this.classList.toggle('is-flipped')">
                             <div class="card-container">
                                 
-                                <div class="card-face card-front border border-slate-200 dark:border-slate-700 relative <?= $isHalo ? 'bg-white' : 'bg-slate-50 dark:bg-slate-800' ?>">
+                                <div class="card-face card-front border border-slate-200 dark:border-slate-700 <?= $isHalo ? 'bg-white' : 'bg-slate-50 dark:bg-slate-800' ?>">
                                     
                                     <?php if($isHalo): ?>
                                         <div class="absolute -right-8 top-1/2 -translate-y-1/2 opacity-[0.03] scale-150 pointer-events-none">
@@ -247,7 +269,7 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                     <?php endif; ?>
                                 </div>
 
-                                <div class="card-face card-back border border-slate-200 dark:border-slate-700 relative <?= $isHalo ? 'bg-white' : 'bg-slate-100 dark:bg-slate-900' ?>">
+                                <div class="card-face card-back border border-slate-200 dark:border-slate-700 <?= $isHalo ? 'bg-white' : 'bg-slate-100 dark:bg-slate-900' ?>">
                                     <?php if($isHalo): ?>
                                         <div class="absolute top-4 left-5">
                                             <p class="text-[11px] text-slate-600 font-medium">Call center <span class="bg-slate-500 text-white px-1.5 py-0.5 rounded-full font-bold text-[9px]">188</span></p>
@@ -292,7 +314,7 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                         </div>
 
                                     <?php else: ?>
-                                        <div class="p-6 h-full flex flex-col justify-between">
+                                        <div class="absolute inset-0 p-6 flex flex-col justify-between">
                                             <div class="flex justify-between items-start">
                                                 <div class="w-32 h-6 barcode-stripes opacity-40"></div>
                                                 <span class="text-[10px] font-mono text-slate-400 select-all"><?= htmlspecialchars($sim['iccid']) ?></span>
