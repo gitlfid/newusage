@@ -272,45 +272,42 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                 <div class="card-face card-back border border-slate-200 dark:border-slate-700 <?= $isHalo ? 'bg-white' : 'bg-slate-100 dark:bg-slate-900' ?>">
                                     <?php if($isHalo): ?>
                                         <div class="absolute top-5 right-5 flex flex-col items-center">
-                                            <div class="w-[140px] h-[18px] barcode-stripes opacity-70"></div>
-                                            <div class="mt-1 text-center tracking-widest font-mono text-[8px] text-slate-500 max-w-[140px] truncate">
+                                            <div class="w-[120px] h-[18px] barcode-stripes opacity-70"></div>
+                                            <div class="mt-1 text-center tracking-widest font-mono text-[8px] text-slate-500 max-w-[120px] truncate">
                                                 <?= htmlspecialchars($sim['sn'] ?: 'NO-SN-DATA') ?>
                                             </div>
                                         </div>
 
-                                        <div class="absolute right-8 top-[48%] -translate-y-1/2 w-[100px] h-[60px] border-2 border-slate-200 rounded-lg flex items-center p-2 shadow-inner">
-                                            <div class="text-[8px] font-mono leading-tight text-slate-500 select-all pr-2 border-r border-slate-200 w-1/2 break-all">
+                                        <div class="absolute right-6 top-[55%] -translate-y-1/2 w-[90px] h-[55px] border-2 border-slate-200 rounded-lg flex items-center p-2 shadow-inner">
+                                            <div class="text-[7px] font-mono leading-tight text-slate-500 select-all pr-2 border-r border-slate-200 w-1/2 break-all">
                                                 <?= wordwrap(htmlspecialchars($sim['iccid']), 4, "<br>", true) ?>
                                             </div>
                                             <div class="pl-2 w-1/2">
-                                                <p class="text-tselred font-bold text-[7px] leading-none mb-0.5">Telkomsel</p>
-                                                <p class="text-tselred font-extrabold text-sm leading-none tracking-tight">Halo</p>
+                                                <p class="text-tselred font-bold text-[6px] leading-none mb-0.5">Telkomsel</p>
+                                                <p class="text-tselred font-extrabold text-xs leading-none tracking-tight">Halo</p>
                                             </div>
                                         </div>
 
                                         <div class="absolute left-5 top-5 bottom-5 w-[160px] flex flex-col justify-center gap-2">
                                             <div class="bg-slate-50 border border-slate-100 p-2.5 rounded-lg shadow-sm">
-                                                <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-1">Customer</p>
-                                                <p class="text-[10px] font-bold text-slate-800 leading-snug break-words">
+                                                <p class="text-[7px] text-slate-400 font-bold uppercase tracking-wider mb-1">Customer</p>
+                                                <p class="text-[10px] font-bold text-slate-800 leading-tight break-words line-clamp-2">
                                                     <?= htmlspecialchars($sim['company_name'] ?? 'Unknown Company') ?>
                                                 </p>
                                             </div>
                                             
-                                            <div class="bg-slate-50 border border-slate-100 p-2.5 rounded-lg shadow-sm flex flex-col gap-2">
-                                                <div class="flex justify-between items-start gap-2">
-                                                    <div class="min-w-0">
-                                                        <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-1">MSISDN</p>
-                                                        <p class="text-[11px] font-mono font-bold text-slate-800 truncate select-all">
-                                                            <?= htmlspecialchars($sim['msisdn']) ?>
-                                                        </p>
-                                                    </div>
-                                                    <div class="text-right flex-shrink-0">
-                                                        <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-1">Package</p>
-                                                        <p class="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 dynamic-val" data-bytes="<?= $totalFlow ?>">
-                                                            <?= formatBytesMB($totalFlow) ?>
-                                                        </p>
-                                                    </div>
-                                                </div>
+                                            <div class="bg-slate-50 border border-slate-100 p-2.5 rounded-lg shadow-sm">
+                                                <p class="text-[7px] text-slate-400 font-bold uppercase tracking-wider mb-1">MSISDN</p>
+                                                <p class="text-[11px] font-mono font-bold text-slate-800 truncate select-all">
+                                                    <?= htmlspecialchars($sim['msisdn']) ?>
+                                                </p>
+                                            </div>
+                                            
+                                            <div class="bg-emerald-50 border border-emerald-100 p-2.5 rounded-lg shadow-sm">
+                                                <p class="text-[7px] text-emerald-600 font-bold uppercase tracking-wider mb-1">Package</p>
+                                                <p class="text-[11px] font-bold text-emerald-700 dynamic-val" data-bytes="<?= $totalFlow ?>">
+                                                    <?= formatBytesMB($totalFlow) ?>
+                                                </p>
                                             </div>
                                         </div>
 
@@ -323,19 +320,19 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                                 </div>
                                                 <span class="text-[10px] font-mono text-slate-400 select-all bg-slate-200 dark:bg-slate-800 px-2 rounded"><?= htmlspecialchars($sim['iccid']) ?></span>
                                             </div>
-                                            <div class="space-y-2 bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                                                <div>
-                                                    <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Customer</p>
-                                                    <p class="text-[11px] font-bold text-slate-800 dark:text-white leading-tight break-words"><?= htmlspecialchars($sim['company_name'] ?? 'Unknown Company') ?></p>
+                                            <div class="flex flex-col gap-2">
+                                                <div class="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                                                    <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Customer</p>
+                                                    <p class="text-[11px] font-bold text-slate-800 dark:text-white leading-tight break-words line-clamp-1"><?= htmlspecialchars($sim['company_name'] ?? 'Unknown Company') ?></p>
                                                 </div>
-                                                <div class="flex justify-between items-end">
-                                                    <div>
+                                                <div class="grid grid-cols-2 gap-2">
+                                                    <div class="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
                                                         <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">MSISDN</p>
-                                                        <p class="text-xs font-mono font-bold text-slate-800 dark:text-white select-all"><?= htmlspecialchars($sim['msisdn']) ?></p>
+                                                        <p class="text-[11px] font-mono font-bold text-slate-800 dark:text-white select-all"><?= htmlspecialchars($sim['msisdn']) ?></p>
                                                     </div>
-                                                    <div class="text-right">
+                                                    <div class="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-right">
                                                         <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Package</p>
-                                                        <p class="text-xs font-bold text-primary dynamic-val" data-bytes="<?= $totalFlow ?>"><?= formatBytesMB($totalFlow) ?></p>
+                                                        <p class="text-[11px] font-bold text-primary dynamic-val" data-bytes="<?= $totalFlow ?>"><?= formatBytesMB($totalFlow) ?></p>
                                                     </div>
                                                 </div>
                                             </div>
