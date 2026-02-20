@@ -109,6 +109,12 @@ function getIconClass($page_name, $current_page, $icon_name) {
                             <span class="group-[.is-collapsed]:hidden whitespace-nowrap">SMTP Settings</span>
                         </a>
                     </li>
+                    <li>
+                        <a href="manage-api" class="relative flex items-center gap-2.5 rounded-xl px-4 py-3 transition-all group-[.is-collapsed]:justify-center <?php echo ($current_page == 'manage-api') ? $active_link_style : $inactive_link_style; ?>">
+                            <i class="<?php echo getIconClass('manage-api', $current_page, 'ph-key'); ?>"></i>
+                            <span class="group-[.is-collapsed]:hidden whitespace-nowrap">API Management</span>
+                        </a>
+                    </li>
                     <?php endif; ?>
 
                 </ul>
