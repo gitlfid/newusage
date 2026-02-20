@@ -39,13 +39,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     // A. UPDATE TAGS
     if (isset($_POST['action']) && $_POST['action'] == 'update_tags') {
         $ids_raw = $_POST['sim_ids']; 
-        $ids = explode(',', $ids_raw);
+        // Filter ID menjadi integer untuk keamanan
+        $ids = array_filter(array_map('intval', explode(',', $ids_raw)));
         $clean_tags = trim($_POST['tags_final']); 
         
         if(!empty($ids)) {
-            $types = str_repeat('s', count($ids));
+            $types = str_repeat('i', count($ids));
             $placeholders = implode(',', array_fill(0, count($ids), '?'));
-            $sql = "UPDATE sims SET tags = ? WHERE iccid IN ($placeholders)";
+            $sql = "UPDATE sims SET tags = ? WHERE id IN ($placeholders)";
             $stmt = $conn->prepare($sql);
             $params = array_merge([$clean_tags], $ids);
             $stmt->bind_param('s' . $types, ...$params);
@@ -59,13 +60,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['action']) && $_POST['action'] == 'update_project') {
         $project_name = trim($_POST['project_name']);
         $ids_raw = $_POST['sim_ids'];
-        $ids = explode(',', $ids_raw);
+        $ids = array_filter(array_map('intval', explode(',', $ids_raw)));
         
         if(!empty($ids)) {
             $val = !empty($project_name) ? $project_name : NULL;
-            $types = str_repeat('s', count($ids));
+            $types = str_repeat('i', count($ids));
             $placeholders = implode(',', array_fill(0, count($ids), '?'));
-            $sql = "UPDATE sims SET custom_project = ? WHERE iccid IN ($placeholders)";
+            $sql = "UPDATE sims SET custom_project = ? WHERE id IN ($placeholders)";
             $stmt = $conn->prepare($sql);
             $params = array_merge([$val], $ids);
             $stmt->bind_param('s' . $types, ...$params);
@@ -75,26 +76,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         exit();
     }
 
-    // C. TRANSFER SIM (NEW FUNCTION)
+    // C. TRANSFER SIM
     if (isset($_POST['action']) && $_POST['action'] == 'transfer_sim') {
         $target_cid = intval($_POST['target_company_id']);
-        $transfer_type = $_POST['transfer_type']; // 'selection' or 'upload'
+        $transfer_type = $_POST['transfer_type']; 
 
         if ($transfer_type == 'selection') {
-            // Transfer by ICCID (from checkboxes)
             $ids_raw = $_POST['sim_ids'];
-            $ids = explode(',', $ids_raw);
+            $ids = array_filter(array_map('intval', explode(',', $ids_raw)));
             if (!empty($ids)) {
-                $types = str_repeat('s', count($ids));
+                $types = str_repeat('i', count($ids));
                 $placeholders = implode(',', array_fill(0, count($ids), '?'));
-                $sql = "UPDATE sims SET company_id = ? WHERE iccid IN ($placeholders)";
+                $sql = "UPDATE sims SET company_id = ? WHERE id IN ($placeholders)";
                 $stmt = $conn->prepare($sql);
                 $params = array_merge([$target_cid], $ids);
                 $stmt->bind_param('i' . $types, ...$params);
                 $stmt->execute();
             }
         } elseif ($transfer_type == 'upload') {
-            // Transfer by MSISDN (from Excel/JSON)
             $msisdns = json_decode($_POST['msisdn_json'], true);
             if (!empty($msisdns)) {
                 $types = str_repeat('s', count($msisdns));
@@ -410,9 +409,10 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                             </thead>
                             <tbody id="tableBody" class="divide-y divide-slate-100 dark:divide-slate-700 text-xs text-slate-600 dark:text-slate-300">
                                 <?php if($result->num_rows > 0): while($row = $result->fetch_assoc()): 
-                                    $iccid = $row['iccid'];
+                                    // PENGGUNAAN ID SEBAGAI IDENTITAS UTAMA AGAR TIDAK BUG SAAT ICCID KOSONG
+                                    $row_id = $row['id'];
+                                    
                                     $companyName = $row['company_name'] ?? 'Unknown';
-                                    $initial = strtoupper(substr($companyName, 0, 1));
                                     $displayProject = !empty($row['custom_project']) ? $row['custom_project'] : $row['default_project'];
                                     $usedRaw = floatval($row['used_flow']??0);
                                     $totalRaw = floatval($row['total_flow']??0);
@@ -421,7 +421,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                 ?>
                                 <tr class="group hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors duration-200">
                                     <td data-col="checkbox" class="px-4 py-3 text-center border-r border-slate-100 dark:border-slate-700/50">
-                                        <input type="checkbox" name="sim_ids[]" value="<?= $iccid ?>" class="sim-check w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary dark:bg-slate-700 dark:border-slate-600 cursor-pointer">
+                                        <input type="checkbox" name="sim_ids[]" value="<?= $row_id ?>" class="sim-check w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary dark:bg-slate-700 dark:border-slate-600 cursor-pointer">
                                     </td>
                                     <td data-col="tags" class="px-4 py-3">
                                         <div class="flex flex-wrap gap-1.5 items-center w-full">
@@ -432,17 +432,21 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                                 <?php if(count(explode(',', $row['tags'])) > 3): ?>
                                                     <span class="text-[9px] text-slate-400 font-medium">+<?= count(explode(',', $row['tags']))-3 ?></span>
                                                 <?php endif; ?>
-                                                <button onclick="openTagModal('<?= $iccid ?>', '<?= htmlspecialchars($row['tags'] ?? '') ?>')" class="w-5 h-5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-primary transition-colors">
+                                                <button onclick="openTagModal('<?= $row_id ?>', '<?= htmlspecialchars($row['tags'] ?? '') ?>')" class="w-5 h-5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-primary transition-colors">
                                                     <i class="ph ph-pencil-simple text-sm"></i>
                                                 </button>
                                             <?php else: ?>
-                                                <button onclick="openTagModal('<?= $iccid ?>', '')" class="flex items-center gap-1 text-[10px] text-slate-400 hover:text-primary border border-dashed border-slate-300 dark:border-slate-600 rounded px-2 py-0.5 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                                                <button onclick="openTagModal('<?= $row_id ?>', '')" class="flex items-center gap-1 text-[10px] text-slate-400 hover:text-primary border border-dashed border-slate-300 dark:border-slate-600 rounded px-2 py-0.5 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                                                     <i class="ph ph-plus"></i> Add
                                                 </button>
                                             <?php endif; ?>
                                         </div>
                                     </td>
-                                    <td data-col="msisdn" class="px-4 py-3 font-mono font-bold text-primary dark:text-indigo-400 select-all"><?= $row['msisdn'] ?: '-' ?></td>
+                                    <td data-col="msisdn" class="px-4 py-3 font-mono font-bold text-primary dark:text-indigo-400 select-all">
+                                        <a href="sim-detail?id=<?= $row_id ?>" class="hover:underline">
+                                            <?= htmlspecialchars($row['msisdn'] ?? '-') ?>
+                                        </a>
+                                    </td>
                                     <td data-col="customer" class="px-4 py-3">
                                         <div class="flex items-center gap-2">
                                             <span class="truncate font-medium text-slate-700 dark:text-slate-200 max-w-[210px]" title="<?= $companyName ?>"><?= $companyName ?></span>
@@ -476,16 +480,16 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                         <?php endif; ?>
                                     </td>
 
-                                    <td data-col="invoice" class="px-4 py-3 text-slate-500 dark:text-slate-400"><?= $row['invoice_number'] ?? '-' ?></td>
+                                    <td data-col="invoice" class="px-4 py-3 text-slate-500 dark:text-slate-400"><?= htmlspecialchars($row['invoice_number'] ?? '-') ?></td>
                                     <td data-col="project" class="px-4 py-3">
                                         <div class="flex items-center gap-1.5 max-w-[140px]">
-                                            <button onclick="openSingleProjectModal('<?= $iccid ?>', '<?= htmlspecialchars($displayProject) ?>')" class="text-slate-400 hover:text-primary"><i class="ph ph-pencil-simple text-xs"></i></button>
-                                            <span class="truncate font-medium text-slate-600 dark:text-slate-400"><?= $displayProject ?: '-' ?></span>
+                                            <button onclick="openSingleProjectModal('<?= $row_id ?>', '<?= htmlspecialchars($displayProject) ?>')" class="text-slate-400 hover:text-primary"><i class="ph ph-pencil-simple text-xs"></i></button>
+                                            <span class="truncate font-medium text-slate-600 dark:text-slate-400"><?= htmlspecialchars($displayProject ?: '-') ?></span>
                                         </div>
                                     </td>
-                                    <td data-col="imsi" class="px-4 py-3 font-mono text-slate-500 dark:text-slate-400"><?= $row['imsi'] ?: '-' ?></td>
-                                    <td data-col="iccid" class="px-4 py-3 font-mono text-slate-500 dark:text-slate-400"><?= $iccid ?></td>
-                                    <td data-col="sn" class="px-4 py-3 text-slate-500 dark:text-slate-400"><?= $row['sn'] ?? '-' ?></td>
+                                    <td data-col="imsi" class="px-4 py-3 font-mono text-slate-500 dark:text-slate-400"><?= htmlspecialchars($row['imsi'] ?? '-') ?></td>
+                                    <td data-col="iccid" class="px-4 py-3 font-mono text-slate-500 dark:text-slate-400"><?= htmlspecialchars($row['iccid'] ?? '-') ?></td>
+                                    <td data-col="sn" class="px-4 py-3 text-slate-500 dark:text-slate-400"><?= htmlspecialchars($row['sn'] ?? '-') ?></td>
                                     
                                     <td data-col="package" class="px-4 py-3 text-center">
                                         <span class="font-bold text-xs text-slate-700 dark:text-slate-200 whitespace-nowrap dynamic-data" data-bytes="<?= $totalRaw ?>"><?= formatToDefaultMB($totalRaw) ?></span>
@@ -502,7 +506,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                         </div>
                                     </td>
                                     <td data-col="action" class="px-4 py-3 text-center">
-                                        <a href="sim-detail.php?iccid=<?= $iccid ?>" class="p-2 rounded-lg text-slate-400 hover:text-primary hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-all inline-block"><i class="ph ph-caret-right text-lg"></i></a>
+                                        <a href="sim-detail?id=<?= $row_id ?>" class="p-2 rounded-lg text-slate-400 hover:text-primary hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-all inline-block"><i class="ph ph-caret-right text-lg"></i></a>
                                     </td>
                                 </tr>
                                 <?php endwhile; else: ?>
@@ -654,11 +658,9 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                 const rawBytes = parseFloat(el.getAttribute('data-bytes'));
                 if(isNaN(rawBytes)) return;
 
-                // Hitung Basis MB (1024^2) agar sinkron dengan data upload 500
                 const baseMB = rawBytes / 1048576; 
 
                 let val = 0;
-                // Switch Basis 1000 sesuai request
                 if(unit === 'KB') val = baseMB * 1000;
                 else if(unit === 'MB') val = baseMB;
                 else if(unit === 'GB') val = baseMB / 1000;
@@ -668,7 +670,6 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
         }
 
         // --- 2. COLUMN LOGIC ---
-        // UPDATE: V10 untuk merefresh localstorage cache karena ada penambahan Card Type dan Expired Date
         const CONFIG_KEY = 'simTableConfig_V10'; 
         const defaultConfig = [
             { id: 'checkbox', name: '', width: 50, frozen: true, visible: true },
@@ -677,8 +678,8 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
             { id: 'customer', name: 'Customer', width: 200, frozen: true, visible: true },
             { id: 'level', name: 'Level', width: 80, frozen: false, visible: true },
             { id: 'batch', name: 'Batch', width: 120, frozen: false, visible: true },
-            { id: 'card_type', name: 'Card Type', width: 120, frozen: false, visible: true }, // KOLOM BARU
-            { id: 'expired_date', name: 'Expired Date', width: 130, frozen: false, visible: true }, // KOLOM BARU
+            { id: 'card_type', name: 'Card Type', width: 120, frozen: false, visible: true },
+            { id: 'expired_date', name: 'Expired Date', width: 130, frozen: false, visible: true },
             { id: 'invoice', name: 'Invoice No', width: 120, frozen: false, visible: true },
             { id: 'project', name: 'Project', width: 140, frozen: false, visible: true },
             { id: 'imsi', name: 'IMSI', width: 140, frozen: false, visible: true },
@@ -810,9 +811,9 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
         }
         function closeModal(id) { animateModal(id, false); }
 
-        function openTagModal(iccid, tags) { 
+        function openTagModal(id, tags) { 
             document.getElementById('tagModalTitle').innerText = "Edit Tags";
-            document.getElementById('modal_tag_ids').value = iccid;
+            document.getElementById('modal_tag_ids').value = id;
             initTagInput(tags);
             animateModal('tagModal', true); 
         }
@@ -826,9 +827,9 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
             animateModal('tagModal', true);
         }
 
-        function openSingleProjectModal(iccid, currentProj) {
+        function openSingleProjectModal(id, currentProj) {
             document.getElementById('projectModalTitle').innerText = "Edit Project";
-            document.getElementById('modal_project_ids').value = iccid;
+            document.getElementById('modal_project_ids').value = id;
             document.getElementById('modal_project_input').value = currentProj;
             animateModal('projectModal', true);
         }
@@ -845,7 +846,6 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
         // --- NEW: TRANSFER LOGIC ---
         function openTransferModal() {
             const checked = document.querySelectorAll('.sim-check:checked');
-            // If none checked, default to Upload tab
             if(checked.length === 0) {
                 setTransferTab('upload');
             } else {
@@ -902,7 +902,6 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                 const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                 let jsonData = XLSX.utils.sheet_to_json(firstSheet);
                 
-                // Extract only MSISDN column (case insensitive)
                 let msisdns = [];
                 jsonData.forEach(row => {
                     const keys = Object.keys(row);
