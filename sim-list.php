@@ -1,5 +1,6 @@
 <?php 
 include 'config.php';
+require_once 'config-api.php'; 
 checkLogin();
 
 enforcePermission('sim_list');
@@ -34,12 +35,22 @@ if ($allowed_comps === 'NONE') {
     $company_condition = " AND sims.company_id IN ($ids_str) ";
 } 
 
+// --- CEK VISIBILITAS TOMBOL REFRESH INDOSAT ---
+$showIndosatRefreshBtn = false;
+if ($company_condition !== " AND 1=0 ") {
+    // Cek apakah user ini memiliki setidaknya 1 nomor indosat di perusahaannya
+    $checkIndosat = $conn->query("SELECT id FROM sims WHERE 1=1 $company_condition AND (msisdn LIKE '62815%' OR msisdn LIKE '62816%' OR msisdn LIKE '62856%' OR msisdn LIKE '62857%') LIMIT 1");
+    if ($checkIndosat->num_rows > 0) {
+        $showIndosatRefreshBtn = true;
+    }
+}
+
 // --- 2. HANDLE POST ACTIONS ---
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    
     // A. UPDATE TAGS
     if (isset($_POST['action']) && $_POST['action'] == 'update_tags') {
         $ids_raw = $_POST['sim_ids']; 
-        // Filter ID menjadi integer untuk keamanan
         $ids = array_filter(array_map('intval', explode(',', $ids_raw)));
         $clean_tags = trim($_POST['tags_final']); 
         
@@ -52,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $stmt->bind_param('s' . $types, ...$params);
             $stmt->execute();
         }
-        header("Location: sim-list.php?msg=tags_updated");
+        header("Location: sim-list?msg=tags_updated");
         exit();
     }
 
@@ -72,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $stmt->bind_param('s' . $types, ...$params);
             $stmt->execute();
         }
-        header("Location: sim-list.php?msg=project_updated");
+        header("Location: sim-list?msg=project_updated");
         exit();
     }
 
@@ -105,7 +116,71 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $stmt->execute();
             }
         }
-        header("Location: sim-list.php?msg=transfer_success");
+        header("Location: sim-list?msg=transfer_success");
+        exit();
+    }
+
+    // D. REFRESH INDOSAT API MANUAL DARI TOMBOL
+    if (isset($_POST['action']) && $_POST['action'] == 'refresh_indosat_api') {
+        set_time_limit(0); 
+        $token = getIndosatToken();
+        if ($token) {
+            $sql = "SELECT id, msisdn, total_flow, rollover_flow, used_flow, max_rollover, rollover_period FROM sims WHERE 1=1 $company_condition AND (msisdn LIKE '62815%' OR msisdn LIKE '62816%' OR msisdn LIKE '62856%' OR msisdn LIKE '62857%')";
+            $res = $conn->query($sql);
+            
+            // Siapkan DB update termasuk logic max_rollover dan rollover_period bulanan
+            $stmt = $conn->prepare("UPDATE sims SET total_flow=?, rollover_flow=?, used_flow=?, max_rollover=?, rollover_period=? WHERE id=?");
+            
+            $currentMonth = date('Y-m'); // Penanda Bulan Berjalan
+
+            while($row = $res->fetch_assoc()) {
+                $msisdn = $row['msisdn'];
+                $id = $row['id'];
+                
+                $totalRaw = floatval($row['total_flow']);
+                $rolloverRaw = floatval($row['rollover_flow']);
+                $usedRaw = floatval($row['used_flow']);
+                $dbMaxRollover = floatval($row['max_rollover']);
+                $dbRolloverPeriod = $row['rollover_period'];
+                
+                $benefit = getIndosatBenefit($token, $msisdn);
+                $traffic = getIndosatTraffic($token, $msisdn);
+                
+                if (isset($benefit['services'][0]['quotas'])) {
+                    foreach ($benefit['services'][0]['quotas'] as $quota) {
+                        if (strtoupper($quota['type']) === 'DATA' || stripos($quota['name'], 'utama') !== false) {
+                            $valRemaining = floatval($quota['remaining'] ?? 0);
+                            $unit = strtoupper($quota['unit'] ?? 'GB');
+                            $totalRaw = ($unit === 'MB') ? $valRemaining * 1048576 : ($valRemaining * 1000) * 1048576;
+                        }
+                        if (strtoupper($quota['type']) === 'DATAROLLOVER' || stripos($quota['name'], 'rollover') !== false) {
+                            $valRemaining = floatval($quota['remaining'] ?? 0);
+                            $unit = strtoupper($quota['unit'] ?? 'GB');
+                            $rolloverRaw = ($unit === 'MB') ? $valRemaining * 1048576 : ($valRemaining * 1000) * 1048576;
+                        }
+                    }
+                }
+                
+                if (isset($traffic['traffic']['data'][0])) {
+                    $valUsage = floatval($traffic['traffic']['data'][0]['value'] ?? 0);
+                    $unit = strtoupper($traffic['traffic']['data'][0]['unit'] ?? 'GB');
+                    if ($unit === 'MB') $usedRaw = $valUsage * 1048576;
+                    elseif ($unit === 'KB') $usedRaw = ($valUsage / 1000) * 1048576;
+                    else $usedRaw = ($valUsage * 1000) * 1048576;
+                }
+                
+                // LOGIKA: Reset jika awal bulan / simpan nilai tertinggi jika bulan masih sama
+                if ($dbRolloverPeriod !== $currentMonth) {
+                    $newMaxRollover = $rolloverRaw; // Reset ke data terkini
+                } else {
+                    $newMaxRollover = max($dbMaxRollover, $rolloverRaw); // Simpan angka tertinggi
+                }
+
+                $stmt->bind_param("ddddsi", $totalRaw, $rolloverRaw, $usedRaw, $newMaxRollover, $currentMonth, $id);
+                $stmt->execute();
+            }
+        }
+        header("Location: sim-list?msg=api_synced");
         exit();
     }
 }
@@ -297,94 +372,114 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                 </div>
 
                 <div class="relative z-10 bg-white dark:bg-darkcard p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 mb-6 animate-fade-in-up" style="animation-delay: 0.1s;">
-                    <form method="GET" id="filterForm" class="flex flex-wrap gap-4 items-end">
+                    <form method="GET" id="filterForm" class="flex flex-col gap-5">
                         <input type="hidden" name="size" value="<?= $pageSize ?>">
                         
-                        <div class="flex-grow min-w-[200px] max-w-[300px]">
-                            <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Search (Multiple)</label>
-                            <div class="relative group">
-                                <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors"></i>
-                                <input type="text" name="search" id="searchInput" onkeydown="handleSearchEnter(event)" value="<?= htmlspecialchars($s_keyword) ?>" placeholder="ICCID, IMSI, MSISDN..." class="w-full h-[42px] pl-9 pr-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm">
-                            </div>
-                        </div>
-
-                        <div class="flex-grow min-w-[150px] max-w-[250px]">
-                            <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Company</label>
-                            <select name="company" onchange="this.form.submit()" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
-                                <option value="">All Companies</option>
-                                <?php foreach($compArr as $c): ?>
-                                    <option value="<?= $c['id'] ?>" <?= $f_company == $c['id'] ? 'selected' : '' ?>><?= $c['company_name'] ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        
-                        <div class="flex-grow min-w-[80px] max-w-[200px]">
-                            <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Batch</label>
-                            <select name="batch" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
-                                <option value="">All Batches</option>
-                                <?php foreach($batchArr as $b): ?>
-                                    <option value="<?= htmlspecialchars($b) ?>" <?= $f_batch === $b ? 'selected' : '' ?>><?= htmlspecialchars($b) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-
-                        <div class="flex-grow min-w-[120px] max-w-[200px]">
-                            <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Invoice No</label>
-                            <select name="invoice" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
-                                <option value="">All Invoices</option>
-                                <?php foreach($invoiceArr as $inv): ?>
-                                    <option value="<?= $inv ?>" <?= $f_invoice == $inv ? 'selected' : '' ?>><?= $inv ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-
-                        <div class="min-w-[120px]">
-                            <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Level</label>
-                            <div class="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1 border border-slate-200 dark:border-slate-700 h-[42px]">
-                                <?php foreach(['' => 'All', '1'=>'L1', '2'=>'L2', '3'=>'L3'] as $val => $lbl): 
-                                    $active = ((string)$f_level === (string)$val) ? 'bg-white dark:bg-slate-600 text-primary dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700';
-                                ?>
-                                <label class="flex-1 cursor-pointer relative h-full">
-                                    <input type="radio" name="level" value="<?= $val ?>" class="sr-only" <?= ((string)$f_level === (string)$val) ? 'checked' : '' ?> onclick="this.form.submit()">
-                                    <div class="h-full flex items-center justify-center rounded-lg text-xs font-bold transition-all <?= $active ?>"><?= $lbl ?></div>
-                                </label>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-
-                        <div class="flex items-center gap-2 ml-auto">
-                            <div class="relative group">
-                                <button type="button" onclick="document.getElementById('colManager').classList.toggle('hidden')" class="h-[42px] px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 shadow-sm transition-colors flex items-center gap-2">
-                                    <i class="ph ph-columns text-lg"></i> Cols
-                                </button>
-                                <div id="colManager" class="hidden absolute right-0 top-12 w-64 bg-white dark:bg-darkcard rounded-xl shadow-2xl border border-slate-100 dark:border-slate-700 p-4 z-[60] animate-in fade-in zoom-in-95 origin-top-right">
-                                    <div class="flex justify-between items-center mb-3">
-                                        <h4 class="text-xs font-bold uppercase text-slate-500">Columns</h4>
-                                        <button type="button" onclick="resetColumnConfig()" class="text-[10px] text-primary hover:underline">Reset</button>
-                                    </div>
-                                    <div id="colListContainer" class="flex flex-col gap-1 max-h-[250px] overflow-y-auto no-scrollbar"></div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+                            
+                            <div class="lg:col-span-1">
+                                <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Search (Multiple)</label>
+                                <div class="relative group">
+                                    <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors"></i>
+                                    <input type="text" name="search" id="searchInput" onkeydown="handleSearchEnter(event)" value="<?= htmlspecialchars($s_keyword) ?>" placeholder="ICCID, IMSI, MSISDN..." class="w-full h-[42px] pl-9 pr-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm">
                                 </div>
                             </div>
-                            
-                            <div class="relative h-[42px] w-[80px]">
-                                <select id="unitSelector" onchange="updateDataUnits()" class="appearance-none w-full h-full pl-3 pr-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-600 dark:text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none cursor-pointer">
-                                    <option value="KB">KB</option>
-                                    <option value="MB" selected>MB</option>
-                                    <option value="GB">GB</option>
+
+                            <div class="lg:col-span-1">
+                                <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Company</label>
+                                <select name="company" onchange="this.form.submit()" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
+                                    <option value="">All Companies</option>
+                                    <?php foreach($compArr as $c): ?>
+                                        <option value="<?= $c['id'] ?>" <?= $f_company == $c['id'] ? 'selected' : '' ?>><?= $c['company_name'] ?></option>
+                                    <?php endforeach; ?>
                                 </select>
-                                <i class="ph ph-caret-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
+                            </div>
+                            
+                            <div class="lg:col-span-1">
+                                <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Batch</label>
+                                <select name="batch" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
+                                    <option value="">All Batches</option>
+                                    <?php foreach($batchArr as $b): ?>
+                                        <option value="<?= htmlspecialchars($b) ?>" <?= $f_batch === $b ? 'selected' : '' ?>><?= htmlspecialchars($b) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
                             </div>
 
-                            <button type="submit" id="btnFilter" class="h-[42px] w-[42px] bg-primary hover:bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-500/20 flex items-center justify-center transition-all active:scale-95 flex-shrink-0">
-                                <i class="ph ph-funnel text-xl"></i>
-                            </button>
+                            <div class="lg:col-span-1">
+                                <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Invoice No</label>
+                                <select name="invoice" class="w-full h-[42px] px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:text-white transition-all shadow-sm cursor-pointer truncate">
+                                    <option value="">All Invoices</option>
+                                    <?php foreach($invoiceArr as $inv): ?>
+                                        <option value="<?= $inv ?>" <?= $f_invoice == $inv ? 'selected' : '' ?>><?= $inv ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <div class="lg:col-span-1">
+                                <label class="block mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Level</label>
+                                <div class="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1 border border-slate-200 dark:border-slate-700 h-[42px]">
+                                    <?php foreach(['' => 'All', '1'=>'L1', '2'=>'L2', '3'=>'L3'] as $val => $lbl): 
+                                        $active = ((string)$f_level === (string)$val) ? 'bg-white dark:bg-slate-600 text-primary dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700';
+                                    ?>
+                                    <label class="flex-1 cursor-pointer relative h-full">
+                                        <input type="radio" name="level" value="<?= $val ?>" class="sr-only" <?= ((string)$f_level === (string)$val) ? 'checked' : '' ?> onclick="this.form.submit()">
+                                        <div class="h-full flex items-center justify-center rounded-lg text-xs font-bold transition-all <?= $active ?>"><?= $lbl ?></div>
+                                    </label>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col sm:flex-row justify-between items-center gap-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+                            
+                            <div>
+                                <?php if($showIndosatRefreshBtn): ?>
+                                <button type="button" onclick="document.getElementById('syncIndosatForm').submit(); this.innerHTML='<i class=\'ph ph-spinner animate-spin text-xl\'></i> Syncing...';" class="h-[40px] px-5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 font-bold text-xs transition-all active:scale-95" title="Sync API Indosat">
+                                    <i class="ph ph-arrows-clockwise text-lg"></i> Sync Indosat
+                                </button>
+                                <?php endif; ?>
+                            </div>
+
+                            <div class="flex items-center gap-2">
+                                <div class="relative group">
+                                    <button type="button" onclick="document.getElementById('colManager').classList.toggle('hidden')" class="h-[40px] px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 shadow-sm transition-colors flex items-center gap-2">
+                                        <i class="ph ph-columns text-lg"></i> Cols
+                                    </button>
+                                    <div id="colManager" class="hidden absolute right-0 top-12 w-64 bg-white dark:bg-darkcard rounded-xl shadow-2xl border border-slate-100 dark:border-slate-700 p-4 z-[60] animate-in fade-in zoom-in-95 origin-top-right">
+                                        <div class="flex justify-between items-center mb-3">
+                                            <h4 class="text-xs font-bold uppercase text-slate-500">Columns</h4>
+                                            <button type="button" onclick="resetColumnConfig()" class="text-[10px] text-primary hover:underline">Reset</button>
+                                        </div>
+                                        <div id="colListContainer" class="flex flex-col gap-1 max-h-[250px] overflow-y-auto no-scrollbar"></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="relative h-[40px] min-w-[80px]">
+                                    <select id="unitSelector" onchange="updateDataUnits()" class="appearance-none w-full h-full pl-3 pr-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-600 dark:text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none cursor-pointer shadow-sm">
+                                        <option value="KB">KB</option>
+                                        <option value="MB" selected>MB</option>
+                                        <option value="GB">GB</option>
+                                    </select>
+                                    <i class="ph ph-caret-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
+                                </div>
+
+                                <button type="submit" id="btnFilter" class="h-[40px] w-[40px] bg-primary hover:bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-500/20 flex items-center justify-center transition-all active:scale-95 flex-shrink-0">
+                                    <i class="ph ph-funnel text-lg"></i>
+                                </button>
+                            </div>
                         </div>
                     </form>
+
+                    <?php if($showIndosatRefreshBtn): ?>
+                    <form method="POST" id="syncIndosatForm" class="hidden">
+                        <input type="hidden" name="action" value="refresh_indosat_api">
+                    </form>
+                    <?php endif; ?>
                 </div>
 
                 <div class="bg-white dark:bg-darkcard rounded-2xl shadow-lg shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 overflow-hidden animate-fade-in-up" style="animation-delay: 0.2s;">
                     <div class="overflow-x-auto relative">
-                        <table id="mainTable" class="w-full text-left border-collapse min-w-[1800px]">
+                        <table id="mainTable" class="w-full text-left border-collapse min-w-[1900px]">
                             <thead class="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 text-[11px] uppercase font-bold tracking-wider">
                                 <tr id="tableHeaderRow">
                                     <th data-col="checkbox" class="px-4 py-4 text-center border-r border-slate-100 dark:border-slate-700/50">
@@ -403,20 +498,42 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                     <th data-col="iccid" class="px-4 py-4">ICCID</th>
                                     <th data-col="sn" class="px-4 py-4">SN</th>
                                     <th data-col="package" class="px-4 py-4 text-center">Package</th>
+                                    <th data-col="rollover" class="px-4 py-4 text-center">Data Rollover</th> 
                                     <th data-col="usage" class="px-4 py-4 min-w-[180px]">Usage</th>
                                     <th data-col="action" class="px-4 py-4 text-center">Action</th>
                                 </tr>
                             </thead>
                             <tbody id="tableBody" class="divide-y divide-slate-100 dark:divide-slate-700 text-xs text-slate-600 dark:text-slate-300">
                                 <?php if($result->num_rows > 0): while($row = $result->fetch_assoc()): 
-                                    // PENGGUNAAN ID SEBAGAI IDENTITAS UTAMA AGAR TIDAK BUG SAAT ICCID KOSONG
                                     $row_id = $row['id'];
-                                    
                                     $companyName = $row['company_name'] ?? 'Unknown';
                                     $displayProject = !empty($row['custom_project']) ? $row['custom_project'] : $row['default_project'];
-                                    $usedRaw = floatval($row['used_flow']??0);
-                                    $totalRaw = floatval($row['total_flow']??0);
-                                    $pct = ($totalRaw > 0) ? ($usedRaw / $totalRaw) * 100 : 0;
+                                    
+                                    // Ambil data murni dari database
+                                    $totalRaw = floatval($row['total_flow'] ?? 0);
+                                    $usedRaw = floatval($row['used_flow'] ?? 0);
+                                    $rolloverRaw = floatval($row['rollover_flow'] ?? 0);
+                                    
+                                    $msisdn = $row['msisdn'] ?? '';
+                                    $isIndosat = preg_match('/^(62815|62816|62856|62857)/', $msisdn);
+                                    
+                                    // LOGIKA DENOMINATOR (PENGGANTI TOTAL PACKAGE UNTUK USAGE)
+                                    $denominator = $totalRaw;
+                                    
+                                    if ($isIndosat) {
+                                        $currentMonth = date('Y-m');
+                                        $dbMaxRollover = floatval($row['max_rollover'] ?? 0);
+                                        $dbRolloverPeriod = $row['rollover_period'] ?? '';
+                                        
+                                        // Auto reset (hanya di sisi UI) jika periode bulanan sudah berganti. 
+                                        // Saat nanti API disinkronisasi, data DB akan ikut menyesuaikan ke rollover terkini.
+                                        $effectiveMaxRollover = ($dbRolloverPeriod === $currentMonth) ? max($dbMaxRollover, $rolloverRaw) : $rolloverRaw;
+                                        
+                                        // PENJUMLAHAN: Denominator = Kuota Utama (Package) + Kuota Rollover Tertinggi
+                                        $denominator = $totalRaw + $effectiveMaxRollover;
+                                    }
+
+                                    $pct = ($denominator > 0) ? ($usedRaw / $denominator) * 100 : 0;
                                     $barColor = ($pct > 90) ? 'bg-red-500' : (($pct > 70) ? 'bg-yellow-500' : 'bg-emerald-500');
                                 ?>
                                 <tr class="group hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors duration-200">
@@ -494,11 +611,20 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                     <td data-col="package" class="px-4 py-3 text-center">
                                         <span class="font-bold text-xs text-slate-700 dark:text-slate-200 whitespace-nowrap dynamic-data" data-bytes="<?= $totalRaw ?>"><?= formatToDefaultMB($totalRaw) ?></span>
                                     </td>
+                                    <td data-col="rollover" class="px-4 py-3 text-center">
+                                        <?php if($isIndosat && $rolloverRaw > 0): ?>
+                                            <span class="font-bold text-xs text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 dark:text-indigo-400 px-2 py-1 rounded border border-indigo-100 dark:border-indigo-800 whitespace-nowrap dynamic-data" data-bytes="<?= $rolloverRaw ?>"><?= formatToDefaultMB($rolloverRaw) ?></span>
+                                        <?php elseif($isIndosat): ?>
+                                            <span class="font-bold text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap dynamic-data" data-bytes="0">0.00 MB</span>
+                                        <?php else: ?>
+                                            <span class="text-xs text-slate-400 dark:text-slate-500">-</span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td data-col="usage" class="px-4 py-3">
                                         <div class="w-full">
                                             <div class="flex justify-between items-end mb-1">
                                                 <span class="text-xs font-bold text-slate-700 dark:text-slate-200 dynamic-data whitespace-nowrap" data-bytes="<?= $usedRaw ?>"><?= formatToDefaultMB($usedRaw) ?></span>
-                                                <span class="text-[10px] text-slate-400 font-medium whitespace-nowrap">/ <span class="dynamic-data" data-bytes="<?= $totalRaw ?>"><?= formatToDefaultMB($totalRaw) ?></span></span>
+                                                <span class="text-[10px] text-slate-400 font-medium whitespace-nowrap">/ <span class="dynamic-data" data-bytes="<?= $denominator ?>"><?= formatToDefaultMB($denominator) ?></span></span>
                                             </div>
                                             <div class="h-1.5 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden border border-slate-200 dark:border-slate-600">
                                                 <div class="h-full <?= $barColor ?> rounded-full" style="width: <?= min($pct, 100) ?>%"></div>
@@ -510,7 +636,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
                                     </td>
                                 </tr>
                                 <?php endwhile; else: ?>
-                                <tr><td colspan="16" class="py-12 text-center text-slate-500">No SIM cards found matching your filters.</td></tr>
+                                <tr><td colspan="17" class="py-12 text-center text-slate-500">No SIM cards found matching your filters.</td></tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
@@ -670,7 +796,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
         }
 
         // --- 2. COLUMN LOGIC ---
-        const CONFIG_KEY = 'simTableConfig_V10'; 
+        const CONFIG_KEY = 'simTableConfig_V12'; 
         const defaultConfig = [
             { id: 'checkbox', name: '', width: 50, frozen: true, visible: true },
             { id: 'tags', name: 'Tags', width: 120, frozen: true, visible: true },
@@ -686,6 +812,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
             { id: 'iccid', name: 'ICCID', width: 160, frozen: false, visible: true },
             { id: 'sn', name: 'SN', width: 100, frozen: false, visible: true },
             { id: 'package', name: 'Package', width: 180, frozen: false, visible: true }, 
+            { id: 'rollover', name: 'Data Rollover', width: 140, frozen: false, visible: true },
             { id: 'usage', name: 'Usage', width: 200, frozen: false, visible: true },
             { id: 'action', name: 'Action', width: 80, frozen: false, visible: true }
         ];
@@ -949,6 +1076,7 @@ while($r = $bQ->fetch_assoc()) $batchArr[] = $r['batch'];
         if(urlParams.get('msg') === 'tags_updated') showToast('Tags updated successfully.');
         if(urlParams.get('msg') === 'project_updated') showToast('Project updated successfully.');
         if(urlParams.get('msg') === 'transfer_success') showToast('SIM cards transferred successfully.');
+        if(urlParams.get('msg') === 'api_synced') showToast('Indosat API data synced successfully.');
 
         function changePageSize(size) {
             const url = new URL(window.location.href); url.searchParams.set('size', size); url.searchParams.set('page', 1); window.location.href = url.toString();

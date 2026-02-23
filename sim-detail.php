@@ -28,7 +28,6 @@ if ($allowed_comps === 'NONE') {
 } 
 
 // --- 3. FETCH SIM DATA ---
-// MENGGUNAKAN ID BUKAN ICCID
 $sql = "SELECT sims.*, companies.company_name, companies.level 
         FROM sims 
         LEFT JOIN companies ON sims.company_id = companies.id 
@@ -49,19 +48,39 @@ if (strpos($cardType, 'halo') !== false || strpos($cardType, 'telkomsel') !== fa
     $isHalo = true;
 }
 
-// Hitung Usage & Persentase
-$totalFlow = floatval($sim['total_flow']);
-$usedFlow = floatval($sim['used_flow']);
-$remainingFlow = max(0, $totalFlow - $usedFlow);
+// Cek Prefix Indosat
+$msisdn = $sim['msisdn'] ?? '';
+$isIndosat = preg_match('/^(62815|62816|62856|62857)/', $msisdn);
 
-$percentage = ($totalFlow > 0) ? ($usedFlow / $totalFlow) * 100 : 0;
+// --- PERHITUNGAN USAGE LOGIC ---
+$mainQuota = floatval($sim['total_flow'] ?? 0);
+$usedFlow = floatval($sim['used_flow'] ?? 0);
+$rolloverRaw = floatval($sim['rollover_flow'] ?? 0);
+
+// Logika Khusus Indosat (Memori Rollover + Reset Bulanan)
+$effectiveRollover = 0;
+$totalCapacity = $mainQuota;
+
+if ($isIndosat) {
+    $currentMonth = date('Y-m');
+    $dbMaxRollover = floatval($sim['max_rollover'] ?? 0);
+    $dbRolloverPeriod = $sim['rollover_period'] ?? '';
+    
+    // Auto reset nilai tertinggi di UI jika beda bulan
+    $effectiveRollover = ($dbRolloverPeriod === $currentMonth) ? max($dbMaxRollover, $rolloverRaw) : $rolloverRaw;
+    $totalCapacity = $mainQuota + $effectiveRollover;
+}
+
+$remainingFlow = max(0, $totalCapacity - $usedFlow);
+$percentage = ($totalCapacity > 0) ? ($usedFlow / $totalCapacity) * 100 : 0;
 $pct_display = min(100, $percentage);
 
-// Tentukan warna Bar
+// Tentukan warna Bar Umum
 $barColor = 'bg-emerald-500';
 $glowColor = 'shadow-emerald-500/50';
 $textColor = 'text-emerald-500';
 $cardColor = 'bg-emerald-50 border-emerald-200 text-emerald-700';
+
 if ($percentage >= 90) {
     $barColor = 'bg-red-500';
     $glowColor = 'shadow-red-500/50';
@@ -74,8 +93,14 @@ if ($percentage >= 90) {
     $cardColor = 'bg-amber-50 border-amber-200 text-amber-700';
 }
 
+// Logika Distribusi Pemakaian Indosat (Rollover terpakai duluan)
+$usedRollover = min($usedFlow, $effectiveRollover);
+$usedMain = max(0, $usedFlow - $effectiveRollover);
+$pctRollover = ($effectiveRollover > 0) ? ($usedRollover / $effectiveRollover) * 100 : 0;
+$pctMain = ($mainQuota > 0) ? ($usedMain / $mainQuota) * 100 : 0;
+
 // --- 4. FETCH HISTORY DATA ---
-$msisdn_safe = $conn->real_escape_string($sim['msisdn'] ?? '');
+$msisdn_safe = $conn->real_escape_string($msisdn);
 $iccid_safe = $conn->real_escape_string($sim['iccid'] ?? '');
 
 $histCond = "msisdn = '$msisdn_safe'";
@@ -220,8 +245,7 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                         <div class="scene" id="simCard3D" onclick="this.classList.toggle('is-flipped')">
                             <div class="card-container">
                                 
-                                <div class="card-face card-front border border-slate-200 dark:border-slate-700 <?= $isHalo ? 'bg-white' : 'bg-slate-50 dark:bg-slate-800' ?>">
-                                    
+                                <div class="card-face card-front border border-slate-200 dark:border-slate-700 <?= ($isHalo || $isIndosat) ? 'bg-white' : 'bg-slate-50 dark:bg-slate-800' ?>">
                                     <?php if($isHalo): ?>
                                         <div class="absolute -right-8 top-1/2 -translate-y-1/2 opacity-[0.03] scale-150 pointer-events-none">
                                             <svg width="200" height="200" viewBox="0 0 100 100"><path d="M50 0 Q100 50 50 100 Q0 50 50 0" fill="#000"/></svg>
@@ -253,6 +277,29 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                             <span class="text-[8px] font-bold uppercase tracking-widest">Flip</span>
                                         </div>
 
+                                    <?php elseif($isIndosat): ?>
+                                        <svg class="absolute left-5 top-1/2 -translate-y-1/2 w-[120px] h-[90px]" style="z-index: 1;">
+                                            <rect x="2" y="2" width="116" height="86" rx="12" class="cut-line" />
+                                            <path d="M 118 65 L 95 88" stroke="#cbd5e1" stroke-width="2" fill="none" stroke-dasharray="6 4"/>
+                                        </svg>
+
+                                        <div class="absolute left-[34px] top-1/2 -translate-y-1/2 z-10 w-[70px] h-[54px] sim-chip-gradient rounded-md border border-amber-600/40 overflow-hidden shadow-sm flex items-center justify-center">
+                                            <div class="w-full h-full chip-lines relative">
+                                                <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 border border-amber-800/20 rounded-full"></div>
+                                                <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-px bg-amber-800/20"></div>
+                                                <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-full w-px bg-amber-800/20"></div>
+                                            </div>
+                                        </div>
+
+                                        <div class="absolute bottom-6 left-6 z-10">
+                                            <p class="text-yellow-500 font-extrabold text-2xl tracking-tighter leading-none">INDOSAT</p>
+                                        </div>
+                                        
+                                        <div class="absolute top-4 right-5 opacity-40 flex items-center gap-1.5 animate-pulse">
+                                            <i class="ph ph-hand-tap text-lg"></i>
+                                            <span class="text-[8px] font-bold uppercase tracking-widest text-slate-800">Flip</span>
+                                        </div>
+
                                     <?php else: ?>
                                         <div class="absolute left-6 top-1/2 -translate-y-1/2 w-[110px] h-[85px] border-[3px] border-slate-300 dark:border-slate-600 rounded-xl border-dashed"></div>
                                         <div class="absolute left-[33px] top-1/2 -translate-y-1/2 z-10 w-24 h-16 sim-chip-gradient rounded-md shadow-sm border border-amber-600/40 overflow-hidden">
@@ -277,8 +324,8 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                     <?php endif; ?>
                                 </div>
 
-                                <div class="card-face card-back border border-slate-200 dark:border-slate-700 <?= $isHalo ? 'bg-white' : 'bg-slate-100 dark:bg-slate-900' ?>">
-                                    <?php if($isHalo): ?>
+                                <div class="card-face card-back border border-slate-200 dark:border-slate-700 <?= ($isHalo || $isIndosat) ? 'bg-white' : 'bg-slate-100 dark:bg-slate-900' ?>">
+                                    <?php if($isHalo || $isIndosat): ?>
                                         <div class="absolute top-5 right-5 flex flex-col items-center">
                                             <div class="w-[120px] h-[18px] barcode-stripes opacity-70"></div>
                                             <div class="mt-1 text-center tracking-widest font-mono text-[8px] text-slate-500 max-w-[120px] truncate">
@@ -291,8 +338,12 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                                 <?= wordwrap(htmlspecialchars($sim['iccid'] ?? '-'), 4, "<br>", true) ?>
                                             </div>
                                             <div class="pl-2 w-1/2">
-                                                <p class="text-tselred font-bold text-[6px] leading-none mb-0.5">Telkomsel</p>
-                                                <p class="text-tselred font-extrabold text-xs leading-none tracking-tight">Halo</p>
+                                                <?php if($isHalo): ?>
+                                                    <p class="text-tselred font-bold text-[6px] leading-none mb-0.5">Telkomsel</p>
+                                                    <p class="text-tselred font-extrabold text-xs leading-none tracking-tight">Halo</p>
+                                                <?php else: ?>
+                                                    <p class="text-yellow-500 font-extrabold text-[8px] leading-none tracking-tight">INDOSAT</p>
+                                                <?php endif; ?>
                                             </div>
                                         </div>
 
@@ -306,15 +357,15 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                             
                                             <div class="bg-slate-50 border border-slate-100 p-2.5 rounded-lg shadow-sm">
                                                 <p class="text-[7px] text-slate-400 font-bold uppercase tracking-wider mb-1">MSISDN</p>
-                                                <p class="text-[11px] font-mono font-bold text-slate-800 truncate select-all">
+                                                <p class="text-[11px] font-mono font-bold text-slate-800 break-all select-all">
                                                     <?= htmlspecialchars($sim['msisdn'] ?? '-') ?>
                                                 </p>
                                             </div>
                                             
-                                            <div class="bg-emerald-50 border border-emerald-100 p-2.5 rounded-lg shadow-sm">
-                                                <p class="text-[7px] text-emerald-600 font-bold uppercase tracking-wider mb-1">Package</p>
-                                                <p class="text-[11px] font-bold text-emerald-700 dynamic-val" data-bytes="<?= $totalFlow ?>">
-                                                    <?= formatBytesMB($totalFlow) ?>
+                                            <div class="bg-emerald-50 border border-emerald-100 p-2.5 rounded-lg shadow-sm flex justify-between items-center">
+                                                <p class="text-[7px] text-emerald-600 font-bold uppercase tracking-wider">Package</p>
+                                                <p class="text-[10px] font-bold text-emerald-700 dynamic-val" data-bytes="<?= $totalCapacity ?>">
+                                                    <?= formatBytesMB($totalCapacity) ?>
                                                 </p>
                                             </div>
                                         </div>
@@ -333,15 +384,13 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                                     <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Customer</p>
                                                     <p class="text-[11px] font-bold text-slate-800 dark:text-white leading-tight break-words line-clamp-1"><?= htmlspecialchars($sim['company_name'] ?? 'Unknown Company') ?></p>
                                                 </div>
-                                                <div class="grid grid-cols-2 gap-2">
-                                                    <div class="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                                                        <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">MSISDN</p>
-                                                        <p class="text-[11px] font-mono font-bold text-slate-800 dark:text-white select-all"><?= htmlspecialchars($sim['msisdn'] ?? '-') ?></p>
-                                                    </div>
-                                                    <div class="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/50 p-2.5 rounded-xl text-right shadow-sm">
-                                                        <p class="text-[8px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider mb-0.5">Package</p>
-                                                        <p class="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 dynamic-val" data-bytes="<?= $totalFlow ?>"><?= formatBytesMB($totalFlow) ?></p>
-                                                    </div>
+                                                <div class="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                                                    <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">MSISDN</p>
+                                                    <p class="text-[11px] font-mono font-bold text-slate-800 dark:text-white select-all break-all"><?= htmlspecialchars($sim['msisdn'] ?? '-') ?></p>
+                                                </div>
+                                                <div class="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/50 p-2.5 rounded-xl flex justify-between items-center shadow-sm">
+                                                    <p class="text-[8px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider">Package</p>
+                                                    <p class="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 dynamic-val" data-bytes="<?= $totalCapacity ?>"><?= formatBytesMB($totalCapacity) ?></p>
                                                 </div>
                                             </div>
                                         </div>
@@ -431,35 +480,79 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                 </div>
                             </div>
 
-                            <div class="mb-10 relative z-10">
-                                <div class="flex justify-between text-xs font-bold text-slate-500 mb-2">
-                                    <span>0 <span class="unit-label">MB</span></span>
-                                    <span class="dynamic-val" data-bytes="<?= $totalFlow ?>"><?= formatBytesMB($totalFlow) ?></span>
-                                </div>
-                                <div class="w-full h-4 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-200 dark:border-slate-700">
-                                    <div class="h-full <?= $barColor ?> shadow-[0_0_15px] <?= $glowColor ?> rounded-full relative animate-progress-fill" style="width: <?= $pct_display ?>%;">
-                                        <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full animate-[shimmer_2s_infinite]"></div>
+                            <?php if ($isIndosat): ?>
+                                <div class="mb-10 relative z-10 space-y-6">
+                                    <div>
+                                        <div class="flex justify-between text-[10px] font-bold text-slate-500 mb-1.5 uppercase tracking-wide">
+                                            <span>Main Package <span class="text-primary ml-1">(<span class="dynamic-val" data-bytes="<?= $usedMain ?>"><?= formatBytesMB($usedMain) ?></span> Used)</span></span>
+                                            <span class="dynamic-val" data-bytes="<?= $mainQuota ?>"><?= formatBytesMB($mainQuota) ?></span>
+                                        </div>
+                                        <div class="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-200 dark:border-slate-700">
+                                            <div class="h-full bg-primary rounded-full relative transition-all duration-1000" style="width: <?= min($pctMain, 100) ?>%;"></div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div>
+                                        <div class="flex justify-between text-[10px] font-bold text-slate-500 mb-1.5 uppercase tracking-wide">
+                                            <span>Data Rollover <span class="text-amber-500 ml-1">(<span class="dynamic-val" data-bytes="<?= $usedRollover ?>"><?= formatBytesMB($usedRollover) ?></span> Used)</span></span>
+                                            <span class="dynamic-val" data-bytes="<?= $effectiveRollover ?>"><?= formatBytesMB($effectiveRollover) ?></span>
+                                        </div>
+                                        <div class="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-200 dark:border-slate-700">
+                                            <div class="h-full bg-amber-500 rounded-full relative transition-all duration-1000" style="width: <?= min($pctRollover, 100) ?>%;"></div>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 relative z-10">
-                                <div class="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-5 border border-slate-100 dark:border-slate-700">
-                                    <i class="ph ph-database text-2xl text-slate-400 mb-2"></i>
-                                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Package</p>
-                                    <p class="text-xl font-bold text-slate-800 dark:text-white mt-1 dynamic-val" data-bytes="<?= $totalFlow ?>"><?= formatBytesMB($totalFlow) ?></p>
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 relative z-10">
+                                    <div class="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-700 shadow-sm">
+                                        <p class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Main Package</p>
+                                        <p class="text-lg font-bold text-slate-800 dark:text-white mt-1 dynamic-val" data-bytes="<?= $mainQuota ?>"><?= formatBytesMB($mainQuota) ?></p>
+                                    </div>
+                                    <div class="bg-amber-50 dark:bg-amber-900/20 rounded-2xl p-4 border border-amber-100 dark:border-amber-800/50 shadow-sm">
+                                        <p class="text-[9px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest">Rollover</p>
+                                        <p class="text-lg font-bold text-amber-700 dark:text-amber-300 mt-1 dynamic-val" data-bytes="<?= $effectiveRollover ?>"><?= formatBytesMB($effectiveRollover) ?></p>
+                                    </div>
+                                    <div class="bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl p-4 border border-indigo-100 dark:border-indigo-800/50 shadow-sm">
+                                        <p class="text-[9px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest">Total Quota</p>
+                                        <p class="text-lg font-bold text-primary dark:text-indigo-300 mt-1 dynamic-val" data-bytes="<?= $totalCapacity ?>"><?= formatBytesMB($totalCapacity) ?></p>
+                                    </div>
+                                    <div class="bg-red-50 dark:bg-red-900/20 rounded-2xl p-4 border border-red-100 dark:border-red-800/50 shadow-sm">
+                                        <p class="text-[9px] font-bold text-red-500 dark:text-red-400 uppercase tracking-widest">Total Used</p>
+                                        <p class="text-lg font-bold text-red-700 dark:text-red-300 mt-1 dynamic-val" data-bytes="<?= $usedFlow ?>"><?= formatBytesMB($usedFlow) ?></p>
+                                    </div>
                                 </div>
-                                <div class="bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl p-5 border border-indigo-100 dark:border-indigo-800/50">
-                                    <i class="ph ph-trend-up text-2xl text-primary mb-2"></i>
-                                    <p class="text-[10px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest">Total Used</p>
-                                    <p class="text-xl font-bold text-primary dark:text-indigo-300 mt-1 dynamic-val" data-bytes="<?= $usedFlow ?>"><?= formatBytesMB($usedFlow) ?></p>
+                            
+                            <?php else: ?>
+                                <div class="mb-10 relative z-10">
+                                    <div class="flex justify-between text-xs font-bold text-slate-500 mb-2">
+                                        <span>0 <span class="unit-label">MB</span></span>
+                                        <span class="dynamic-val" data-bytes="<?= $totalCapacity ?>"><?= formatBytesMB($totalCapacity) ?></span>
+                                    </div>
+                                    <div class="w-full h-4 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-200 dark:border-slate-700">
+                                        <div class="h-full <?= $barColor ?> shadow-[0_0_15px] <?= $glowColor ?> rounded-full relative animate-progress-fill" style="width: <?= $pct_display ?>%;">
+                                            <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full animate-[shimmer_2s_infinite]"></div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="rounded-2xl p-5 border <?= $cardColor ?> bg-opacity-30 dark:bg-opacity-10">
-                                    <i class="ph ph-check-circle text-2xl mb-2"></i>
-                                    <p class="text-[10px] font-bold uppercase tracking-widest opacity-80">Remaining</p>
-                                    <p class="text-xl font-bold mt-1 dynamic-val" data-bytes="<?= $remainingFlow ?>"><?= formatBytesMB($remainingFlow) ?></p>
+
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 relative z-10">
+                                    <div class="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-5 border border-slate-100 dark:border-slate-700">
+                                        <i class="ph ph-database text-2xl text-slate-400 mb-2"></i>
+                                        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Package</p>
+                                        <p class="text-xl font-bold text-slate-800 dark:text-white mt-1 dynamic-val" data-bytes="<?= $totalCapacity ?>"><?= formatBytesMB($totalCapacity) ?></p>
+                                    </div>
+                                    <div class="bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl p-5 border border-indigo-100 dark:border-indigo-800/50">
+                                        <i class="ph ph-trend-up text-2xl text-primary mb-2"></i>
+                                        <p class="text-[10px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest">Total Used</p>
+                                        <p class="text-xl font-bold text-primary dark:text-indigo-300 mt-1 dynamic-val" data-bytes="<?= $usedFlow ?>"><?= formatBytesMB($usedFlow) ?></p>
+                                    </div>
+                                    <div class="rounded-2xl p-5 border <?= $cardColor ?> bg-opacity-30 dark:bg-opacity-10">
+                                        <i class="ph ph-check-circle text-2xl mb-2"></i>
+                                        <p class="text-[10px] font-bold uppercase tracking-widest opacity-80">Remaining</p>
+                                        <p class="text-xl font-bold mt-1 dynamic-val" data-bytes="<?= $remainingFlow ?>"><?= formatBytesMB($remainingFlow) ?></p>
+                                    </div>
                                 </div>
-                            </div>
+                            <?php endif; ?>
                         </div>
 
                         <div class="bg-white dark:bg-darkcard rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 p-6 md:p-8">
@@ -473,14 +566,14 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                         <i class="ph ph-ghost text-3xl"></i>
                                     </div>
                                     <h4 class="text-sm font-bold text-slate-700 dark:text-slate-300">No History Found</h4>
-                                    <p class="text-xs text-slate-500 mt-1">Usage data has never been updated via Excel upload.</p>
+                                    <p class="text-xs text-slate-500 mt-1">Usage data has never been updated via Excel upload or Sync.</p>
                                 </div>
                             <?php else: ?>
                                 <div class="space-y-0 pl-2">
                                     <?php foreach ($history as $idx => $hist): 
                                         $isLatest = ($idx === 0);
                                         $used = floatval($hist['used_flow']);
-                                        $hPct = ($totalFlow > 0) ? ($used / $totalFlow) * 100 : 0;
+                                        $hPct = ($totalCapacity > 0) ? ($used / $totalCapacity) * 100 : 0;
                                     ?>
                                     <div class="relative pl-8 py-3 timeline-item group">
                                         <div class="absolute left-0 top-4 w-3 h-3 rounded-full timeline-dot z-10 <?= $isLatest ? 'bg-primary shadow-[0_0_10px] shadow-indigo-500/50 ring-4 ring-indigo-50 dark:ring-indigo-900/50' : 'bg-slate-300 dark:bg-slate-600 group-hover:bg-slate-400 transition-colors' ?>"></div>
