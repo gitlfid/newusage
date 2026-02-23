@@ -342,7 +342,7 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                                     <p class="text-tselred font-bold text-[6px] leading-none mb-0.5">Telkomsel</p>
                                                     <p class="text-tselred font-extrabold text-xs leading-none tracking-tight">Halo</p>
                                                 <?php else: ?>
-                                                    <p class="text-yellow-500 font-extrabold text-[10px] leading-none tracking-tight">INDOSAT</p>
+                                                    <p class="text-yellow-500 font-extrabold text-[8px] leading-none tracking-tight">INDOSAT</p>
                                                 <?php endif; ?>
                                             </div>
                                         </div>
@@ -384,15 +384,13 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                                     <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Customer</p>
                                                     <p class="text-[11px] font-bold text-slate-800 dark:text-white leading-tight break-words line-clamp-1"><?= htmlspecialchars($sim['company_name'] ?? 'Unknown Company') ?></p>
                                                 </div>
-                                                <div class="grid grid-cols-2 gap-2">
-                                                    <div class="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                                                        <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">MSISDN</p>
-                                                        <p class="text-[11px] font-mono font-bold text-slate-800 dark:text-white select-all"><?= htmlspecialchars($sim['msisdn'] ?? '-') ?></p>
-                                                    </div>
-                                                    <div class="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/50 p-2.5 rounded-xl text-right shadow-sm">
-                                                        <p class="text-[8px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider mb-0.5">Package</p>
-                                                        <p class="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 dynamic-val" data-bytes="<?= $totalCapacity ?>"><?= formatBytesMB($totalCapacity) ?></p>
-                                                    </div>
+                                                <div class="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                                                    <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">MSISDN</p>
+                                                    <p class="text-[11px] font-mono font-bold text-slate-800 dark:text-white select-all break-all"><?= htmlspecialchars($sim['msisdn'] ?? '-') ?></p>
+                                                </div>
+                                                <div class="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/50 p-2.5 rounded-xl flex justify-between items-center shadow-sm">
+                                                    <p class="text-[8px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider">Package</p>
+                                                    <p class="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 dynamic-val" data-bytes="<?= $totalCapacity ?>"><?= formatBytesMB($totalCapacity) ?></p>
                                                 </div>
                                             </div>
                                         </div>
