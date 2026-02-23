@@ -245,7 +245,7 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                         <div class="scene" id="simCard3D" onclick="this.classList.toggle('is-flipped')">
                             <div class="card-container">
                                 
-                                <div class="card-face card-front border border-slate-200 dark:border-slate-700 <?= $isHalo ? 'bg-white' : 'bg-slate-50 dark:bg-slate-800' ?>">
+                                <div class="card-face card-front border border-slate-200 dark:border-slate-700 <?= ($isHalo || $isIndosat) ? 'bg-white' : 'bg-slate-50 dark:bg-slate-800' ?>">
                                     <?php if($isHalo): ?>
                                         <div class="absolute -right-8 top-1/2 -translate-y-1/2 opacity-[0.03] scale-150 pointer-events-none">
                                             <svg width="200" height="200" viewBox="0 0 100 100"><path d="M50 0 Q100 50 50 100 Q0 50 50 0" fill="#000"/></svg>
@@ -277,6 +277,29 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                             <span class="text-[8px] font-bold uppercase tracking-widest">Flip</span>
                                         </div>
 
+                                    <?php elseif($isIndosat): ?>
+                                        <svg class="absolute left-5 top-1/2 -translate-y-1/2 w-[120px] h-[90px]" style="z-index: 1;">
+                                            <rect x="2" y="2" width="116" height="86" rx="12" class="cut-line" />
+                                            <path d="M 118 65 L 95 88" stroke="#cbd5e1" stroke-width="2" fill="none" stroke-dasharray="6 4"/>
+                                        </svg>
+
+                                        <div class="absolute left-[34px] top-1/2 -translate-y-1/2 z-10 w-[70px] h-[54px] sim-chip-gradient rounded-md border border-amber-600/40 overflow-hidden shadow-sm flex items-center justify-center">
+                                            <div class="w-full h-full chip-lines relative">
+                                                <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 border border-amber-800/20 rounded-full"></div>
+                                                <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-px bg-amber-800/20"></div>
+                                                <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-full w-px bg-amber-800/20"></div>
+                                            </div>
+                                        </div>
+
+                                        <div class="absolute bottom-6 left-6 z-10">
+                                            <p class="text-yellow-500 font-extrabold text-2xl tracking-tighter leading-none">INDOSAT</p>
+                                        </div>
+                                        
+                                        <div class="absolute top-4 right-5 opacity-40 flex items-center gap-1.5 animate-pulse">
+                                            <i class="ph ph-hand-tap text-lg"></i>
+                                            <span class="text-[8px] font-bold uppercase tracking-widest text-slate-800">Flip</span>
+                                        </div>
+
                                     <?php else: ?>
                                         <div class="absolute left-6 top-1/2 -translate-y-1/2 w-[110px] h-[85px] border-[3px] border-slate-300 dark:border-slate-600 rounded-xl border-dashed"></div>
                                         <div class="absolute left-[33px] top-1/2 -translate-y-1/2 z-10 w-24 h-16 sim-chip-gradient rounded-md shadow-sm border border-amber-600/40 overflow-hidden">
@@ -301,8 +324,8 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                     <?php endif; ?>
                                 </div>
 
-                                <div class="card-face card-back border border-slate-200 dark:border-slate-700 <?= $isHalo ? 'bg-white' : 'bg-slate-100 dark:bg-slate-900' ?>">
-                                    <?php if($isHalo): ?>
+                                <div class="card-face card-back border border-slate-200 dark:border-slate-700 <?= ($isHalo || $isIndosat) ? 'bg-white' : 'bg-slate-100 dark:bg-slate-900' ?>">
+                                    <?php if($isHalo || $isIndosat): ?>
                                         <div class="absolute top-5 right-5 flex flex-col items-center">
                                             <div class="w-[120px] h-[18px] barcode-stripes opacity-70"></div>
                                             <div class="mt-1 text-center tracking-widest font-mono text-[8px] text-slate-500 max-w-[120px] truncate">
@@ -315,8 +338,12 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                                 <?= wordwrap(htmlspecialchars($sim['iccid'] ?? '-'), 4, "<br>", true) ?>
                                             </div>
                                             <div class="pl-2 w-1/2">
-                                                <p class="text-tselred font-bold text-[6px] leading-none mb-0.5">Telkomsel</p>
-                                                <p class="text-tselred font-extrabold text-xs leading-none tracking-tight">Halo</p>
+                                                <?php if($isHalo): ?>
+                                                    <p class="text-tselred font-bold text-[6px] leading-none mb-0.5">Telkomsel</p>
+                                                    <p class="text-tselred font-extrabold text-xs leading-none tracking-tight">Halo</p>
+                                                <?php else: ?>
+                                                    <p class="text-yellow-500 font-extrabold text-[10px] leading-none tracking-tight">INDOSAT</p>
+                                                <?php endif; ?>
                                             </div>
                                         </div>
 
@@ -352,19 +379,20 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                                 </div>
                                                 <span class="text-[10px] font-mono text-slate-400 select-all bg-slate-200 dark:bg-slate-800 px-2 rounded"><?= htmlspecialchars($sim['iccid'] ?? '-') ?></span>
                                             </div>
-                                            
                                             <div class="flex flex-col gap-2">
                                                 <div class="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
                                                     <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Customer</p>
                                                     <p class="text-[11px] font-bold text-slate-800 dark:text-white leading-tight break-words line-clamp-1"><?= htmlspecialchars($sim['company_name'] ?? 'Unknown Company') ?></p>
                                                 </div>
-                                                <div class="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                                                    <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">MSISDN</p>
-                                                    <p class="text-[11px] font-mono font-bold text-slate-800 dark:text-white select-all break-all"><?= htmlspecialchars($sim['msisdn'] ?? '-') ?></p>
-                                                </div>
-                                                <div class="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/50 p-2.5 rounded-xl flex justify-between items-center shadow-sm">
-                                                    <p class="text-[8px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider">Package</p>
-                                                    <p class="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 dynamic-val" data-bytes="<?= $totalCapacity ?>"><?= formatBytesMB($totalCapacity) ?></p>
+                                                <div class="grid grid-cols-2 gap-2">
+                                                    <div class="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                                                        <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">MSISDN</p>
+                                                        <p class="text-[11px] font-mono font-bold text-slate-800 dark:text-white select-all"><?= htmlspecialchars($sim['msisdn'] ?? '-') ?></p>
+                                                    </div>
+                                                    <div class="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/50 p-2.5 rounded-xl text-right shadow-sm">
+                                                        <p class="text-[8px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider mb-0.5">Package</p>
+                                                        <p class="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 dynamic-val" data-bytes="<?= $totalCapacity ?>"><?= formatBytesMB($totalCapacity) ?></p>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
