@@ -82,8 +82,8 @@ if ($uData['role'] !== 'superadmin' && $uData['is_global'] != 1) {
 }
 
 // 5. Query Data SIM Dinamis (Satu atau Semua)
-// UPDATE: Menambahkan sims.card_type ke dalam query SELECT
-$sql = "SELECT sims.msisdn, sims.iccid, sims.imsi, sims.sn, sims.total_flow, sims.used_flow, sims.card_type, companies.company_name 
+// UPDATE: Menambahkan sims.expired_date ke dalam query SELECT
+$sql = "SELECT sims.msisdn, sims.iccid, sims.imsi, sims.sn, sims.total_flow, sims.used_flow, sims.card_type, sims.expired_date, companies.company_name 
         FROM sims 
         LEFT JOIN companies ON sims.company_id = companies.id
         WHERE 1=1 $company_condition";
@@ -110,7 +110,8 @@ if ($result->num_rows > 0) {
         $data_array[] = [
             'customer' => $sim['company_name'] ?? 'Unknown',
             'msisdn' => $sim['msisdn'],
-            'card_type' => $sim['card_type'], // UPDATE: Menyisipkan card_type di sini
+            'card_type' => $sim['card_type'],
+            'expired_date' => $sim['expired_date'], // UPDATE: Menyisipkan expired_date di sini
             'iccid' => $sim['iccid'],
             'imsi' => $sim['imsi'],
             'sn' => $sim['sn'],
