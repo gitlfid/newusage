@@ -320,7 +320,7 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                             </div>
                                         </div>
 
-                                        <div class="absolute left-5 top-5 bottom-5 w-[160px] flex flex-col justify-center gap-2">
+                                        <div class="absolute left-5 top-5 bottom-5 w-[180px] flex flex-col justify-center gap-2">
                                             <div class="bg-slate-50 border border-slate-100 p-2.5 rounded-lg shadow-sm">
                                                 <p class="text-[7px] text-slate-400 font-bold uppercase tracking-wider mb-1">Customer</p>
                                                 <p class="text-[10px] font-bold text-slate-800 leading-snug break-words line-clamp-2">
@@ -328,20 +328,19 @@ $last_update = !empty($history) ? date('d M Y, H:i', strtotime($history[0]['reco
                                                 </p>
                                             </div>
                                             
-                                            <div class="bg-slate-50 border border-slate-100 p-2.5 rounded-lg shadow-sm flex flex-col gap-2">
-                                                <div class="flex justify-between items-start gap-2">
-                                                    <div class="min-w-0">
-                                                        <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-1">MSISDN</p>
-                                                        <p class="text-[11px] font-mono font-bold text-slate-800 truncate select-all">
-                                                            <?= htmlspecialchars($sim['msisdn']) ?>
-                                                        </p>
-                                                    </div>
-                                                    <div class="text-right flex-shrink-0">
-                                                        <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wider mb-1">Package</p>
-                                                        <p class="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 dynamic-val" data-bytes="<?= $totalCapacity ?>">
-                                                            <?= formatBytesMB($totalCapacity) ?>
-                                                        </p>
-                                                    </div>
+                                            <div class="grid grid-cols-2 gap-2">
+                                                <div class="bg-slate-50 border border-slate-100 p-2.5 rounded-lg shadow-sm min-w-0">
+                                                    <p class="text-[7px] text-slate-400 font-bold uppercase tracking-wider mb-1">MSISDN</p>
+                                                    <p class="text-[10px] font-mono font-bold text-slate-800 truncate select-all">
+                                                        <?= htmlspecialchars($sim['msisdn'] ?? '-') ?>
+                                                    </p>
+                                                </div>
+                                                
+                                                <div class="bg-emerald-50 border border-emerald-100 p-2.5 rounded-lg shadow-sm text-right min-w-0">
+                                                    <p class="text-[7px] text-emerald-600 font-bold uppercase tracking-wider mb-1">Package</p>
+                                                    <p class="text-[10px] font-bold text-emerald-700 truncate dynamic-val" data-bytes="<?= $totalCapacity ?>">
+                                                        <?= formatBytesMB($totalCapacity) ?>
+                                                    </p>
                                                 </div>
                                             </div>
                                         </div>
